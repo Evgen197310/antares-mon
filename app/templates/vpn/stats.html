@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+{% block title %}VPN Статистика{% endblock %}
+{% block content %}
+<div class="container-fluid">
+  <div class="row">
+    <div class="col-12">
+      <h1 class="mb-4"><i class="fas fa-chart-bar text-secondary"></i> Статистика VPN</h1>
+    </div>
+  </div>
+
+  <div class="row mb-4">
+    <div class="col-md-3">
+      <div class="card text-white bg-success">
+        <div class="card-header">Активные сессии</div>
+        <div class="card-body"><h3>{{ active_sessions or 0 }}</h3></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="col-lg-6">
+      <div class="card mb-4">
+        <div class="card-header"><strong>По дням (30 дней)</strong></div>
+        <div class="card-body">
+          {% if daily_stats %}
+          <div class="table-responsive">
+            <table class="table table-sm table-striped">
+              <thead>
+                <tr><th>Дата</th><th>Сессий</th><th>Пользователей</th></tr>
+              </thead>
+              <tbody>
+                {% for row in daily_stats %}
+                <tr>
+                  <td>{{ row.date.strftime('%d.%m.%Y') if row.date else row.get('date') }}</td>
+                  <td>{{ row.sessions or row.get('sessions') }}</td>
+                  <td>{{ row.users or row.get('users') }}</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          {% else %}
+          <div class="alert alert-info">Нет данных за последние 30 дней.</div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <div class="col-lg-6">
+      <div class="card mb-4">
+        <div class="card-header"><strong>Топ пользователей (30 дней)</strong></div>
+        <div class="card-body">
+          {% if top_users %}
+          <div class="table-responsive">
+            <table class="table table-sm table-striped">
+              <thead>
+                <tr><th>Пользователь</th><th>Сессий</th><th>Сред. длительность</th><th>Сумма длительности</th></tr>
+              </thead>
+              <tbody>
+                {% for row in top_users %}
+                <tr>
+                  <td>{{ row.username or row.get('username') }}</td>
+                  <td>{{ row.sessions or row.get('sessions') }}</td>
+                  <td>{{ row.avg_duration or row.get('avg_duration') }}</td>
+                  <td>{{ row.total_duration or row.get('total_duration') }}</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          {% else %}
+          <div class="alert alert-info">Недостаточно данных для рейтинга.</div>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="card mb-4">
+        <div class="card-header"><strong>По часам (7 дней)</strong></div>
+        <div class="card-body">
+          {% if hourly_stats %}
+          <div class="table-responsive">
+            <table class="table table-sm table-striped">
+              <thead>
+                <tr><th>Час</th><th>Сессий</th></tr>
+              </thead>
+              <tbody>
+                {% for row in hourly_stats %}
+                <tr>
+                  <td>{{ row.hour or row.get('hour') }}</td>
+                  <td>{{ row.sessions or row.get('sessions') }}</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          {% else %}
+          <div class="alert alert-info">Нет помасчасовой статистики за последние 7 дней.</div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

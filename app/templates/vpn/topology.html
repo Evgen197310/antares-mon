@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}VPN Топология MikroTik{% endblock %}
+{% block content %}
+<div class="container-fluid">
+  <div class="row">
+    <div class="col-12">
+      <h1 class="mb-4"><i class="fas fa-network-wired text-warning"></i> Топология MikroTik</h1>
+    </div>
+  </div>
+
+  {% if routers and routers|length > 0 %}
+  <div class="row">
+    <div class="col-12">
+      <div class="card">
+        <div class="card-header">
+          <strong>Список устройств ({{ routers|length }})</strong>
+        </div>
+        <div class="card-body">
+          <div class="table-responsive">
+            <table class="table table-striped">
+              <thead>
+                <tr>
+                  <th>Identity</th>
+                  <th>IP</th>
+                  <th>Локация</th>
+                  <th>Тип</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for r in routers %}
+                <tr>
+                  <td>{{ r.identity or r.get('identity') }}</td>
+                  <td><code>{{ r.ip or r.get('ip') }}</code></td>
+                  <td>{{ r.location or r.get('location') or 'Unknown' }}</td>
+                  <td>{{ r.type or r.get('type') or '-' }}</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  {% else %}
+  <div class="alert alert-info">Нет данных о топологии MikroTik или файл карты не найден.</div>
+  {% endif %}
+</div>
+{% endblock %}
