@@ -17,14 +17,35 @@ def read_mikrotik_map():
         
         routers = []
         with open(map_file, 'r', encoding='utf-8') as f:
-            reader = csv.DictReader(f)
-            for row in reader:
-                routers.append({
-                    'identity': row.get('identity', ''),
-                    'ip': row.get('ip', ''),
-                    'location': row.get('location', ''),
-                    'type': row.get('type', '')
-                })
+            peek = f.readline()
+            f.seek(0)
+            header_like = any(k in peek.lower() for k in ['identity', 'ip', 'location', 'type'])
+            if header_like:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    routers.append({
+                        'identity': row.get('identity', ''),
+                        'ip': row.get('ip', ''),
+                        'location': row.get('location', ''),
+                        'type': row.get('type', '')
+                    })
+            else:
+                reader = csv.reader(f)
+                for row in reader:
+                    if not row:
+                        continue
+                    identity = row[0].strip() if len(row) > 0 else ''
+                    ip = row[1].strip() if len(row) > 1 else ''
+                    # Встречаются файлы вида: identity, ip, prefix, tunnel, code
+                    location = row[3].strip() if len(row) > 3 else 'Unknown'
+                    typecode = row[4].strip() if len(row) > 4 else ''
+                    rtype = {'D': 'Dynamic', 'I': 'Internal'}.get(typecode, typecode or '-')
+                    routers.append({
+                        'identity': identity,
+                        'ip': ip,
+                        'location': location or 'Unknown',
+                        'type': rtype,
+                    })
         return routers
     except Exception as e:
         current_app.logger.error(f"Error reading MikroTik map: {e}")
@@ -350,6 +371,84 @@ def mikrotik_map():
     except Exception as e:
         current_app.logger.error(f"VPN map error: {e}")
         return render_template('vpn/map.html', routers=[], grouped_routers={})
+
+@bp.route('/mikrotik_topology')
+def mikrotik_topology():
+    """Визуальная топология MikroTik, как в исходном проекте.
+    Формирует узлы и ребра на основе CSV карты (FULL_MAP_FILE).
+    """
+    try:
+        # Путь к полному дампу адресов/интерфейсов
+        full_map = current_app.config.get('FULL_MAP_FILE', current_app.config.get('MIKROTIK_MAP_FILE', '/opt/ike2web/data/full_map.csv'))
+        if not os.path.exists(full_map):
+            current_app.logger.warning(f"FULL_MAP_FILE not found: {full_map}")
+            return render_template('vpn/mikrotik_topology.html', nodes=[], edges=[])
+
+        # какие L2TP-префиксы считаем активными (как в оригинале)
+        L2TP_PREFIXES = ("192.168.90.", "10.10.20.")
+
+        def is_l2tp_ip(ip: str) -> bool:
+            return any(ip.startswith(p) for p in L2TP_PREFIXES)
+
+        def subnet_key(ip: str) -> str:
+            return ".".join(ip.split(".")[:3])
+
+        routers = {}
+        l2tp_peers = []
+        with open(full_map, encoding='utf-8') as f:
+            for row in csv.reader(f):
+                if len(row) < 4:
+                    continue
+                identity, ip, mask, iface = [x.strip() for x in row[:4]]
+                flag = row[4].strip() if len(row) > 4 else ""
+                if flag == "I":  # пропускаем внутренние
+                    continue
+                r = routers.setdefault(identity, {'lans': [], 'l2tps': []})
+                if iface.startswith(('bridge', 'ether', 'vlan')):
+                    r['lans'].append(f"{ip}/{mask}")
+                if iface.lower().startswith('l2tp') or is_l2tp_ip(ip):
+                    r['l2tps'].append(f"{ip}/{mask}")
+                    l2tp_peers.append((identity, ip))
+
+        l2tp_subnets = {}
+        for identity, ip in l2tp_peers:
+            key = subnet_key(ip)
+            entry = l2tp_subnets.setdefault(key, {'server': None, 'clients': []})
+            if ip.endswith('.1'):
+                entry['server'] = (identity, ip)
+            else:
+                entry['clients'].append((identity, ip))
+
+        nodes = []
+        for identity, info in routers.items():
+            label = f"<b>{identity}</b>"
+            if info['lans']:
+                label += "\nLAN: " + ", ".join(info['lans'])
+            if info['l2tps']:
+                label += "\nL2TP: " + ", ".join(info['l2tps'])
+            nodes.append({"id": identity, "label": label, "shape": "box", "color": "#AED6F1"})
+
+        edges = []
+        for key, entry in l2tp_subnets.items():
+            if not entry['server']:
+                continue
+            srv_id, srv_ip = entry['server']
+            for cli_id, cli_ip in entry['clients']:
+                if cli_id == srv_id:
+                    continue
+                edges.append({
+                    "from": cli_id,
+                    "to":   srv_id,
+                    "label": f"{key}.x  ({cli_ip}\u2192{srv_ip})",
+                    "arrows": {"to": {"enabled": True, "scaleFactor": 1.3}},
+                    "color": "#2874A6",
+                    "width": 2
+                })
+
+        return render_template("vpn/mikrotik_topology.html", nodes=nodes, edges=edges)
+    except Exception as e:
+        current_app.logger.error(f"VPN mikrotik_topology error: {e}")
+        return render_template("vpn/mikrotik_topology.html", nodes=[], edges=[])
 
 @bp.route('/stats')
 def stats():

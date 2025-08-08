@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}Схема сети MikroTik (L2TP){% endblock %}
+{% block head_extra %}
+  <script src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+  <style>
+    #network { width: 100%; height: 700px; border: 1px solid #ccc; margin: 12px 0; }
+  </style>
+{% endblock %}
+{% block content %}
+<div class="container-fluid">
+  <div class="row">
+    <div class="col-12">
+      <h1 class="mb-3"><i class="fas fa-project-diagram text-info"></i> Графическая схема L2TP сети MikroTik</h1>
+      <div id="network"></div>
+    </div>
+  </div>
+</div>
+<script>
+  const nodes = {{ nodes|tojson }};
+  const edges = {{ edges|tojson }};
+  const network = new vis.Network(
+    document.getElementById('network'),
+    { nodes: new vis.DataSet(nodes), edges: new vis.DataSet(edges) },
+    {
+      layout: { hierarchical: { enabled: true, direction: 'UD', sortMethod: 'hubsize', levelSeparation: 150, nodeSpacing: 200, treeSpacing: 300 } },
+      physics: { enabled: false },
+      nodes: { shape: 'box', margin: 10, font: { size: 16, multi: 'html' }, color: '#AED6F1' },
+      edges: { arrows: { to: { enabled: true, scaleFactor: 1.3 } }, width: 2, color: '#2874A6', font: { size: 14, align: 'top' }, smooth: { type: 'cubicBezier', roundness: 0.4 } },
+      interaction: { dragNodes: true, dragView: true, zoomView: true }
+    }
+  );
+  network.fit();
+</script>
+{% endblock %}
