@@ -6,8 +6,13 @@ import os
 import tempfile
 import paramiko
 from urllib.parse import quote
+import traceback
 
 bp = Blueprint('smb', __name__)
+
+@bp.route('/debug-ping')
+def debug_ping():
+    return 'smb-ok'
 
 def normalize_username(username):
     """Нормализация имени пользователя"""
@@ -109,6 +114,8 @@ def index():
 def files_open_now():
     """Открытые в данный момент файлы"""
     try:
+        if request.args.get('ping') == '1':
+            return 'pong'
         with db_manager.get_connection('smb') as conn:
             with conn.cursor() as cursor:
                 cursor.execute("""
@@ -121,11 +128,30 @@ def files_open_now():
                     ORDER BY s.last_seen DESC
                 """)
                 sessions = cursor.fetchall()
-                
-                return render_template('smb/open_now_table.html', sessions=sessions)
+                # Режим отладки: вернуть JSON
+                if request.args.get('format') == 'json':
+                    # Преобразуем datetime в строки для JSON
+                    out = []
+                    for s in sessions:
+                        s2 = dict(s)
+                        if s2.get('open_time'):
+                            s2['open_time'] = s2['open_time'].isoformat()
+                        if s2.get('last_seen'):
+                            s2['last_seen'] = s2['last_seen'].isoformat()
+                        out.append(s2)
+                    return jsonify({"status": "success", "count": len(out), "data": out})
+
+                try:
+                    return render_template('smb/open_now_table.html', sessions=sessions)
+                except Exception as re:
+                    current_app.logger.error(f"Template render error: {re}")
+                    return "Render error\n" + traceback.format_exc(), 500
     except Exception as e:
         current_app.logger.error(f"SMB files open now error: {e}")
-        return render_template('smb/open_now_table.html', sessions=[])
+        # В отладочном режиме возвращаем текст ошибки
+        if request.args.get('format') == 'json':
+            return jsonify({"status": "error", "message": str(e)}), 500
+        return f"SMB files open now error: {e}", 500
 
 @bp.route('/user/<int:user_id>')
 def user_detail(user_id):
