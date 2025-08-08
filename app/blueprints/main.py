@@ -99,25 +99,20 @@ def health_check():
         'databases': {}
     }
     
-    # Проверка подключений к БД
-    for db_name in ['vpnstat', 'rdpstat', 'smbstat']:
+    # Проверка подключений к БД через db_manager
+    db_map = {
+        'vpnstat': 'vpn',
+        'rdpstat': 'rdp',
+        'smbstat': 'smb',
+    }
+    for label, key in db_map.items():
         try:
-            if db_name == 'vpnstat':
-                with get_vpn_connection() as conn:
-                    with conn.cursor() as cur:
-                        cur.execute("SELECT 1")
-            elif db_name == 'rdpstat':
-                with get_rdp_connection() as conn:
-                    with conn.cursor() as cur:
-                        cur.execute("SELECT 1")
-            elif db_name == 'smbstat':
-                with get_smb_connection() as conn:
-                    with conn.cursor() as cur:
-                        cur.execute("SELECT 1")
-            
-            health['databases'][db_name] = 'ok'
+            with db_manager.get_connection(key) as conn:
+                with conn.cursor() as cur:
+                    cur.execute("SELECT 1")
+            health['databases'][label] = 'ok'
         except Exception as e:
-            health['databases'][db_name] = f'error: {str(e)}'
+            health['databases'][label] = f'error: {str(e)}'
             health['status'] = 'degraded'
     
     return health

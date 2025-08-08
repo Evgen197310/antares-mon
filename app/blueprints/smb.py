@@ -52,7 +52,7 @@ def index():
             with conn.cursor() as cursor:
                 # Получаем пользователей с активными сессиями
                 users_query = """
-                    SELECT u.id, u.username, COUNT(s.user_id) as active_sessions,
+                    SELECT u.id, u.username, COUNT(s.user_id) as open_files_count,
                            MAX(s.last_seen) as last_activity
                     FROM smb_users u
                     LEFT JOIN active_smb_sessions s ON u.id = s.user_id
@@ -64,7 +64,7 @@ def index():
                     users_query += " HAVING u.username LIKE %s"
                     params.append(f"%{search_user}%")
                 
-                users_query += " ORDER BY active_sessions DESC, u.username ASC LIMIT 50"
+                users_query += " ORDER BY open_files_count DESC, u.username ASC LIMIT 50"
                 cursor.execute(users_query, params)
                 users = cursor.fetchall()
                 
