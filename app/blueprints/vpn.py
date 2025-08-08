@@ -290,43 +290,73 @@ def user_detail(username):
         per_page = 50
         offset = (page - 1) * per_page
         
-        # Ограничиваем период
-        date_from = datetime.now() - timedelta(days=days)
+        # Ограничиваем период: 0 = все время
+        date_from = None if days == 0 else (datetime.now() - timedelta(days=days))
         
         with db_manager.get_connection('vpn') as conn:
             with conn.cursor() as cursor:
                 # Получаем общее количество записей пользователя
-                cursor.execute("""
-                    SELECT COUNT(*) as total 
-                    FROM session_history 
-                    WHERE username = %s AND time_start >= %s
-                """, (username, date_from))
+                if date_from is None:
+                    cursor.execute("""
+                        SELECT COUNT(*) as total 
+                        FROM session_history 
+                        WHERE username = %s
+                    """, (username,))
+                else:
+                    cursor.execute("""
+                        SELECT COUNT(*) as total 
+                        FROM session_history 
+                        WHERE username = %s AND time_start >= %s
+                    """, (username, date_from))
                 total = cursor.fetchone()['total']
                 
                 # Получаем записи для текущей страницы
-                cursor.execute("""
-                    SELECT username, outer_ip, inner_ip, time_start, time_end, duration
-                    FROM session_history 
-                    WHERE username = %s AND time_start >= %s
-                    ORDER BY time_start DESC
-                    LIMIT %s OFFSET %s
-                """, (username, date_from, per_page, offset))
+                if date_from is None:
+                    cursor.execute("""
+                        SELECT username, outer_ip, inner_ip, time_start, time_end, duration
+                        FROM session_history 
+                        WHERE username = %s
+                        ORDER BY time_start DESC
+                        LIMIT %s OFFSET %s
+                    """, (username, per_page, offset))
+                else:
+                    cursor.execute("""
+                        SELECT username, outer_ip, inner_ip, time_start, time_end, duration
+                        FROM session_history 
+                        WHERE username = %s AND time_start >= %s
+                        ORDER BY time_start DESC
+                        LIMIT %s OFFSET %s
+                    """, (username, date_from, per_page, offset))
                 
                 sessions = cursor.fetchall()
                 
                 # Статистика пользователя
-                cursor.execute("""
-                    SELECT 
-                        COUNT(*) as total_sessions,
-                        COUNT(CASE WHEN time_end IS NULL THEN 1 END) as active_sessions,
-                        AVG(duration) as avg_duration,
-                        SUM(duration) as total_duration,
-                        COUNT(DISTINCT DATE(time_start)) as active_days,
-                        MIN(time_start) as first_session,
-                        MAX(time_start) as last_session
-                    FROM session_history 
-                    WHERE username = %s AND time_start >= %s
-                """, (username, date_from))
+                if date_from is None:
+                    cursor.execute("""
+                        SELECT 
+                            COUNT(*) as total_sessions,
+                            COUNT(CASE WHEN time_end IS NULL THEN 1 END) as active_sessions,
+                            AVG(duration) as avg_duration,
+                            SUM(duration) as total_duration,
+                            COUNT(DISTINCT DATE(time_start)) as active_days,
+                            MIN(time_start) as first_session,
+                            MAX(time_start) as last_session
+                        FROM session_history 
+                        WHERE username = %s
+                    """, (username,))
+                else:
+                    cursor.execute("""
+                        SELECT 
+                            COUNT(*) as total_sessions,
+                            COUNT(CASE WHEN time_end IS NULL THEN 1 END) as active_sessions,
+                            AVG(duration) as avg_duration,
+                            SUM(duration) as total_duration,
+                            COUNT(DISTINCT DATE(time_start)) as active_days,
+                            MIN(time_start) as first_session,
+                            MAX(time_start) as last_session
+                        FROM session_history 
+                        WHERE username = %s AND time_start >= %s
+                    """, (username, date_from))
                 stats = cursor.fetchone()
                 
                 # Пагинация
@@ -346,7 +376,8 @@ def user_detail(username):
                                      has_prev=has_prev,
                                      has_next=has_next,
                                      prev_num=prev_num,
-                                     next_num=next_num)
+                                     next_num=next_num,
+                                     server_now=datetime.now().isoformat())
     except Exception as e:
         current_app.logger.error(f"VPN user detail error: {e}")
         return render_template('vpn/user_detail.html', 
