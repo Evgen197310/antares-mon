@@ -145,71 +145,89 @@ def user_history(username):
     """Детальная история RDP сессий пользователя"""
     try:
         page = request.args.get('page', 1, type=int)
-        days = request.args.get('days', 30, type=int)
         per_page = 50
         offset = (page - 1) * per_page
-        
-        # Ограничиваем период
-        date_from = datetime.now() - timedelta(days=days)
-        
+
+        # Фильтры периода и хоста
+        date_from_arg = request.args.get('date_from')
+        date_to_arg = request.args.get('date_to')
+        host_filter = request.args.get('host_filter', '', type=str)
+
+        # Значения по умолчанию: последние 30 дней
+        dt_now = datetime.now()
+        date_from = datetime.strptime(date_from_arg, '%Y-%m-%d') if date_from_arg else (dt_now - timedelta(days=30))
+        date_to = datetime.strptime(date_to_arg, '%Y-%m-%d') if date_to_arg else dt_now
+
         with db_manager.get_connection('rdp') as conn:
             with conn.cursor() as cursor:
-                # Получаем общее количество записей пользователя
-                cursor.execute("""
-                    SELECT COUNT(*) as total 
-                    FROM rdp_session_history 
-                    WHERE username = %s AND login_time >= %s
-                """, (username, date_from))
+                # Динамические условия
+                where = ["username = %s", "login_time >= %s", "login_time <= %s"]
+                params = [username, date_from, date_to]
+                if host_filter:
+                    where.append("remote_host LIKE %s")
+                    params.append(f"%{host_filter}%")
+
+                where_sql = " AND ".join(where)
+
+                # Всего записей
+                cursor.execute(f"""
+                    SELECT COUNT(*) as total
+                    FROM rdp_session_history
+                    WHERE {where_sql}
+                """, params)
                 total = cursor.fetchone()['total']
-                
-                # Получаем записи для текущей страницы
-                cursor.execute("""
-                    SELECT username, domain, collection_name, remote_host, 
-                           login_time, connection_type
-                    FROM rdp_session_history 
-                    WHERE username = %s AND login_time >= %s
+
+                # Данные страницы
+                cursor.execute(f"""
+                    SELECT username, domain, collection_name, remote_host,
+                           login_time, logout_time, connection_type, duration_seconds
+                    FROM rdp_session_history
+                    WHERE {where_sql}
                     ORDER BY login_time DESC
                     LIMIT %s OFFSET %s
-                """, (username, date_from, per_page, offset))
-                
+                """, params + [per_page, offset])
                 sessions = cursor.fetchall()
-                
-                # Статистика пользователя
-                cursor.execute("""
+
+                # Расширенная статистика под нужды шаблона
+                cursor.execute(f"""
                     SELECT 
-                        COUNT(*) as total_sessions,
-                        COUNT(DISTINCT DATE(login_time)) as active_days,
-                        MIN(login_time) as first_session,
-                        MAX(login_time) as last_session
-                    FROM rdp_session_history 
-                    WHERE username = %s AND login_time >= %s
-                """, (username, date_from))
-                stats = cursor.fetchone()
-                
-                # Пагинация
-                has_prev = page > 1
-                has_next = offset + per_page < total
-                prev_num = page - 1 if has_prev else None
-                next_num = page + 1 if has_next else None
-                
-                return render_template('rdp/user_history.html',
-                                     username=username,
-                                     sessions=sessions,
-                                     stats=stats,
-                                     days=days,
-                                     page=page,
-                                     per_page=per_page,
-                                     total=total,
-                                     has_prev=has_prev,
-                                     has_next=has_next,
-                                     prev_num=prev_num,
-                                     next_num=next_num)
+                        COUNT(*)                            AS total_sessions,
+                        COUNT(DISTINCT remote_host)         AS unique_hosts,
+                        COUNT(DISTINCT collection_name)     AS unique_collections,
+                        AVG(duration_seconds)               AS avg_duration,
+                        MAX(login_time)                     AS last_login
+                    FROM rdp_session_history
+                    WHERE {where_sql}
+                """, params)
+                user_stats = cursor.fetchone() or {}
+
+                # Пагинация (количество страниц)
+                total_pages = (total + per_page - 1) // per_page
+
+                return render_template(
+                    'rdp/user_history.html',
+                    username=username,
+                    sessions=sessions,
+                    user_stats=user_stats,
+                    # значения фильтров обратно в форму
+                    date_from=date_from.strftime('%Y-%m-%d'),
+                    date_to=date_to.strftime('%Y-%m-%d'),
+                    host_filter=host_filter,
+                    # пагинация
+                    page=page,
+                    total_pages=total_pages
+                )
     except Exception as e:
         current_app.logger.error(f"RDP user history error: {e}")
         return render_template('rdp/user_history.html', 
                              username=username, 
-                             sessions=[], 
-                             stats={})
+                              sessions=[], 
+                             user_stats={},
+                             date_from=None,
+                             date_to=None,
+                             host_filter=None,
+                             page=1,
+                             total_pages=1)
 
 @bp.route('/active-sessions')
 def active_sessions():
