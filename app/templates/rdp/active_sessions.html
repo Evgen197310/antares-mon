@@ -175,7 +175,7 @@
                                                     {% endif %}
                                                     <button class="btn btn-outline-info" 
                                                             data-bs-toggle="modal" 
-                                                            data-bs-target="#sessionModal{{ loop.parent.loop.index }}_{{ loop.index }}"
+                                                            data-bs-target="#sessionModal{{ outer_idx }}_{{ loop.index }}"
                                                             title="Детали сессии">
                                                         <i class="fas fa-info-circle"></i>
                                                     </button>
@@ -196,8 +196,9 @@
 
     <!-- Модальные окна с деталями сессий -->
     {% for username, user_sessions in users_sessions.items() %}
+        {% set outer_idx = loop.index %}
         {% for session in user_sessions %}
-        <div class="modal fade" id="sessionModal{{ loop.parent.loop.index }}_{{ loop.index }}" tabindex="-1">
+        <div class="modal fade" id="sessionModal{{ outer_idx }}_{{ loop.index }}" tabindex="-1">
             <div class="modal-dialog">
                 <div class="modal-content">
                     <div class="modal-header">
