@@ -1,0 +1,264 @@
+from flask import Blueprint, render_template, request, jsonify, current_app
+from app.models.database import db_manager
+from datetime import datetime, timedelta
+import logging
+
+bp = Blueprint('rdp', __name__)
+
+def get_rdp_active_sessions():
+    """Получить активные RDP сессии с интеграцией SMB данных"""
+    state_map = {
+        "0": "Активная", "1": "Подключён", "2": "Запрос подключения",
+        "3": "Теневой режим", "4": "Отключён", "5": "Простой",
+        "6": "Недоступна", "7": "Инициализация", "8": "Сброшена", "9": "Ожидание"
+    }
+    
+    try:
+        sessions = []
+        with db_manager.get_connection('rdp') as conn_rdp:
+            with db_manager.get_connection('smb') as conn_smb:
+                with conn_rdp.cursor() as cursor:
+                    cursor.execute("""
+                        SELECT username, domain, collection_name, remote_host,
+                               login_time, state, duration_seconds
+                        FROM rdp_active_sessions
+                        ORDER BY username ASC, collection_name ASC
+                    """)
+                    rows = cursor.fetchall()
+                    
+                    for row in rows:
+                        # Получаем user_id из SMB базы
+                        user_id = None
+                        username = row.get('username')
+                        if username:
+                            with conn_smb.cursor() as smb_cursor:
+                                smb_cursor.execute("SELECT id FROM smb_users WHERE username = %s", (username,))
+                                user_row = smb_cursor.fetchone()
+                                if user_row:
+                                    user_id = user_row['id']
+                        
+                        row["user_id"] = user_id
+                        row["duration"] = row.get("duration_seconds")
+                        state_code = str(row.get("state", ""))
+                        row["state_label"] = state_map.get(state_code, f"Unknown({state_code})")
+                        sessions.append(row)
+        
+        return sessions
+    except Exception as e:
+        current_app.logger.error(f"Error getting RDP active sessions: {e}")
+        return []
+
+@bp.route('/')
+def index():
+    """Главная страница RDP мониторинга"""
+    try:
+        sessions = get_rdp_active_sessions()
+        
+        # Группировка сессий по пользователям
+        users_sessions = {}
+        for session in sessions:
+            username = session.get('username', 'Unknown')
+            if username not in users_sessions:
+                users_sessions[username] = []
+            users_sessions[username].append(session)
+        
+        return render_template('rdp/index.html', 
+                             sessions=sessions,
+                             users_sessions=users_sessions)
+    except Exception as e:
+        current_app.logger.error(f"RDP index error: {e}")
+        return render_template('rdp/index.html', sessions=[], users_sessions={})
+
+@bp.route('/sessions-history')
+def sessions_history():
+    """История RDP сессий всех пользователей"""
+    try:
+        page = request.args.get('page', 1, type=int)
+        per_page = 50
+        offset = (page - 1) * per_page
+        
+        with db_manager.get_connection('rdp') as conn:
+            with conn.cursor() as cursor:
+                # Получаем общее количество записей
+                cursor.execute("SELECT COUNT(*) as total FROM rdp_session_history")
+                total = cursor.fetchone()['total']
+                
+                # Получаем записи для текущей страницы
+                cursor.execute("""
+                    SELECT username, domain, collection_name, remote_host, 
+                           login_time, connection_type
+                    FROM rdp_session_history 
+                    ORDER BY login_time DESC
+                    LIMIT %s OFFSET %s
+                """, (per_page, offset))
+                
+                sessions = cursor.fetchall()
+                
+                # Пагинация
+                has_prev = page > 1
+                has_next = offset + per_page < total
+                prev_num = page - 1 if has_prev else None
+                next_num = page + 1 if has_next else None
+                
+                return render_template('rdp/sessions_history.html',
+                                     sessions=sessions,
+                                     page=page,
+                                     per_page=per_page,
+                                     total=total,
+                                     has_prev=has_prev,
+                                     has_next=has_next,
+                                     prev_num=prev_num,
+                                     next_num=next_num)
+    except Exception as e:
+        current_app.logger.error(f"RDP sessions history error: {e}")
+        return render_template('rdp/sessions_history.html', sessions=[])
+
+@bp.route('/user/<username>')
+def user_history(username):
+    """Детальная история RDP сессий пользователя"""
+    try:
+        page = request.args.get('page', 1, type=int)
+        days = request.args.get('days', 30, type=int)
+        per_page = 50
+        offset = (page - 1) * per_page
+        
+        # Ограничиваем период
+        date_from = datetime.now() - timedelta(days=days)
+        
+        with db_manager.get_connection('rdp') as conn:
+            with conn.cursor() as cursor:
+                # Получаем общее количество записей пользователя
+                cursor.execute("""
+                    SELECT COUNT(*) as total 
+                    FROM rdp_session_history 
+                    WHERE username = %s AND login_time >= %s
+                """, (username, date_from))
+                total = cursor.fetchone()['total']
+                
+                # Получаем записи для текущей страницы
+                cursor.execute("""
+                    SELECT username, domain, collection_name, remote_host, 
+                           login_time, connection_type
+                    FROM rdp_session_history 
+                    WHERE username = %s AND login_time >= %s
+                    ORDER BY login_time DESC
+                    LIMIT %s OFFSET %s
+                """, (username, date_from, per_page, offset))
+                
+                sessions = cursor.fetchall()
+                
+                # Статистика пользователя
+                cursor.execute("""
+                    SELECT 
+                        COUNT(*) as total_sessions,
+                        COUNT(DISTINCT DATE(login_time)) as active_days,
+                        MIN(login_time) as first_session,
+                        MAX(login_time) as last_session
+                    FROM rdp_session_history 
+                    WHERE username = %s AND login_time >= %s
+                """, (username, date_from))
+                stats = cursor.fetchone()
+                
+                # Пагинация
+                has_prev = page > 1
+                has_next = offset + per_page < total
+                prev_num = page - 1 if has_prev else None
+                next_num = page + 1 if has_next else None
+                
+                return render_template('rdp/user_history.html',
+                                     username=username,
+                                     sessions=sessions,
+                                     stats=stats,
+                                     days=days,
+                                     page=page,
+                                     per_page=per_page,
+                                     total=total,
+                                     has_prev=has_prev,
+                                     has_next=has_next,
+                                     prev_num=prev_num,
+                                     next_num=next_num)
+    except Exception as e:
+        current_app.logger.error(f"RDP user history error: {e}")
+        return render_template('rdp/user_history.html', 
+                             username=username, 
+                             sessions=[], 
+                             stats={})
+
+@bp.route('/active-sessions')
+def active_sessions():
+    """Детальный просмотр активных RDP сессий"""
+    try:
+        sessions = get_rdp_active_sessions()
+        
+        # Группировка сессий по пользователям
+        users_sessions = {}
+        for session in sessions:
+            username = session.get('username', 'Unknown')
+            if username not in users_sessions:
+                users_sessions[username] = []
+            users_sessions[username].append(session)
+        
+        return render_template('rdp/active_sessions.html',
+                             sessions=sessions,
+                             users_sessions=users_sessions)
+    except Exception as e:
+        current_app.logger.error(f"RDP active sessions error: {e}")
+        return render_template('rdp/active_sessions.html', 
+                             sessions=[], 
+                             users_sessions={})
+
+# API endpoints для RDP
+@bp.route('/api/sessions')
+def api_sessions():
+    """API: Получить активные RDP сессии"""
+    try:
+        sessions = get_rdp_active_sessions()
+        
+        # Преобразуем datetime в строки для JSON
+        for session in sessions:
+            if session.get('login_time'):
+                session['login_time'] = session['login_time'].isoformat()
+        
+        return jsonify({
+            "status": "success",
+            "count": len(sessions),
+            "data": sessions
+        })
+    except Exception as e:
+        current_app.logger.error(f"RDP API sessions error: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@bp.route('/api/user/<username>/stats')
+def api_user_stats(username):
+    """API: Статистика пользователя RDP"""
+    try:
+        with db_manager.get_connection('rdp') as conn:
+            with conn.cursor() as cursor:
+                # Активные сессии пользователя
+                cursor.execute("""
+                    SELECT COUNT(*) as active 
+                    FROM rdp_active_sessions 
+                    WHERE username = %s
+                """, (username,))
+                active_count = cursor.fetchone()['active']
+                
+                # Всего сессий за последние 30 дней
+                cursor.execute("""
+                    SELECT COUNT(*) as total 
+                    FROM rdp_session_history 
+                    WHERE username = %s AND login_time >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+                """, (username,))
+                total_count = cursor.fetchone()['total']
+                
+                return jsonify({
+                    "status": "success",
+                    "data": {
+                        "username": username,
+                        "active_sessions": active_count,
+                        "sessions_last_30_days": total_count,
+                        "timestamp": datetime.now().isoformat()
+                    }
+                })
+    except Exception as e:
+        current_app.logger.error(f"RDP API user stats error: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 500

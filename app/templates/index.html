@@ -1,0 +1,233 @@
+{% extends "base.html" %}
+
+{% block title %}Главная - Мониторинг инфраструктуры{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <h1 class="mb-4">
+            <i class="bi bi-speedometer2"></i> Дашборд мониторинга
+        </h1>
+    </div>
+</div>
+
+<!-- Статистические карточки -->
+<div class="row mb-4">
+    <!-- VPN -->
+    <div class="col-md-4 mb-3">
+        <div class="card border-primary">
+            <div class="card-header bg-primary text-white">
+                <h5 class="card-title mb-0">
+                    <i class="bi bi-shield-lock"></i> VPN (IKEv2)
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-6">
+                        <div class="text-center">
+                            <h3 class="text-primary">{{ stats.vpn_active }}</h3>
+                            <small class="text-muted">Активных</small>
+                        </div>
+                    </div>
+                    <div class="col-6">
+                        <div class="text-center">
+                            <h3 class="text-info">{{ stats.vpn_total_today }}</h3>
+                            <small class="text-muted">За сегодня</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="mt-3">
+                    <a href="{{ url_for('vpn.index') }}" class="btn btn-primary btn-sm">
+                        <i class="bi bi-arrow-right"></i> Подробнее
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- RDP -->
+    <div class="col-md-4 mb-3">
+        <div class="card border-success">
+            <div class="card-header bg-success text-white">
+                <h5 class="card-title mb-0">
+                    <i class="bi bi-pc-display"></i> RDP
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-6">
+                        <div class="text-center">
+                            <h3 class="text-success">{{ stats.rdp_active }}</h3>
+                            <small class="text-muted">Активных</small>
+                        </div>
+                    </div>
+                    <div class="col-6">
+                        <div class="text-center">
+                            <h3 class="text-info">{{ stats.rdp_total_today }}</h3>
+                            <small class="text-muted">За сегодня</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="mt-3">
+                    <a href="{{ url_for('rdp.index') }}" class="btn btn-success btn-sm">
+                        <i class="bi bi-arrow-right"></i> Подробнее
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- SMB -->
+    <div class="col-md-4 mb-3">
+        <div class="card border-warning">
+            <div class="card-header bg-warning text-dark">
+                <h5 class="card-title mb-0">
+                    <i class="bi bi-folder"></i> SMB
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-6">
+                        <div class="text-center">
+                            <h3 class="text-warning">{{ stats.smb_active }}</h3>
+                            <small class="text-muted">Открытых файлов</small>
+                        </div>
+                    </div>
+                    <div class="col-6">
+                        <div class="text-center">
+                            <h3 class="text-info">{{ stats.smb_users_active }}</h3>
+                            <small class="text-muted">Активных пользователей</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="mt-3">
+                    <a href="{{ url_for('smb.index') }}" class="btn btn-warning btn-sm">
+                        <i class="bi bi-arrow-right"></i> Подробнее
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Быстрые действия -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="bi bi-lightning"></i> Быстрые действия
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-3 mb-2">
+                        <a href="{{ url_for('vpn.topology') }}" class="btn btn-outline-primary w-100">
+                            <i class="bi bi-diagram-3"></i><br>
+                            <small>Топология MikroTik</small>
+                        </a>
+                    </div>
+                    <div class="col-md-3 mb-2">
+                        <a href="{{ url_for('rdp.sessions_history') }}" class="btn btn-outline-success w-100">
+                            <i class="bi bi-clock-history"></i><br>
+                            <small>История RDP</small>
+                        </a>
+                    </div>
+                    <div class="col-md-3 mb-2">
+                        <a href="{{ url_for('smb.files_open_now') }}" class="btn btn-outline-warning w-100">
+                            <i class="bi bi-file-earmark-text"></i><br>
+                            <small>Открытые файлы</small>
+                        </a>
+                    </div>
+                    <div class="col-md-3 mb-2">
+                        <a href="{{ url_for('api.docs') }}" class="btn btn-outline-info w-100">
+                            <i class="bi bi-code-slash"></i><br>
+                            <small>API документация</small>
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Системная информация -->
+<div class="row">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h6 class="card-title mb-0">
+                    <i class="bi bi-info-circle"></i> Системная информация
+                </h6>
+            </div>
+            <div class="card-body">
+                <ul class="list-unstyled mb-0">
+                    <li><strong>Версия:</strong> 2.0.0</li>
+                    <li><strong>Время работы:</strong> <span id="uptime">Загрузка...</span></li>
+                    <li><strong>Последнее обновление:</strong> <span id="last-update">Загрузка...</span></li>
+                </ul>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h6 class="card-title mb-0">
+                    <i class="bi bi-activity"></i> Состояние системы
+                </h6>
+            </div>
+            <div class="card-body">
+                <div id="system-status">
+                    <div class="d-flex justify-content-center">
+                        <div class="spinner-border spinner-border-sm" role="status">
+                            <span class="visually-hidden">Загрузка...</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Обновление времени сервера
+function updateServerTime() {
+    const now = new Date();
+    document.getElementById('server-time').textContent = now.toLocaleString('ru-RU');
+}
+
+// Загрузка состояния системы
+function loadSystemStatus() {
+    fetch('/health')
+        .then(response => response.json())
+        .then(data => {
+            const statusDiv = document.getElementById('system-status');
+            let html = '';
+            
+            for (const [db, status] of Object.entries(data.databases)) {
+                const badgeClass = status === 'ok' ? 'bg-success' : 'bg-danger';
+                html += `<span class="badge ${badgeClass} me-2">${db.toUpperCase()}: ${status}</span>`;
+            }
+            
+            statusDiv.innerHTML = html;
+        })
+        .catch(error => {
+            document.getElementById('system-status').innerHTML = 
+                '<span class="badge bg-danger">Ошибка загрузки</span>';
+        });
+}
+
+// Инициализация
+document.addEventListener('DOMContentLoaded', function() {
+    updateServerTime();
+    loadSystemStatus();
+    
+    // Обновление каждые 30 секунд
+    setInterval(updateServerTime, 30000);
+    setInterval(loadSystemStatus, 60000);
+});
+</script>
+{% endblock %}

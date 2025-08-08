@@ -1,0 +1,305 @@
+{% extends "base.html" %}
+
+{% block title %}{{ username }} - RDP История{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <h1 class="mb-4">
+                <i class="fas fa-user text-primary"></i>
+                RDP История: <strong>{{ username }}</strong>
+            </h1>
+        </div>
+    </div>
+
+    <!-- Навигация -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-body">
+                    <div class="btn-group" role="group">
+                        <a href="{{ url_for('rdp.sessions_history') }}" class="btn btn-outline-primary">
+                            <i class="fas fa-arrow-left"></i>
+                            Назад к истории
+                        </a>
+                        <a href="{{ url_for('rdp.index') }}" class="btn btn-outline-secondary">
+                            <i class="fas fa-desktop"></i>
+                            RDP Мониторинг
+                        </a>
+                        <a href="{{ url_for('main.index') }}" class="btn btn-outline-secondary">
+                            <i class="fas fa-home"></i>
+                            Главная
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Статистика пользователя -->
+    {% if user_stats %}
+    <div class="row mb-4">
+        <div class="col-md-2">
+            <div class="card bg-info text-white">
+                <div class="card-body text-center">
+                    <h4>{{ user_stats.total_sessions }}</h4>
+                    <p class="mb-0 small">Всего сессий</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-2">
+            <div class="card bg-success text-white">
+                <div class="card-body text-center">
+                    <h4>{{ user_stats.unique_hosts }}</h4>
+                    <p class="mb-0 small">Уникальных хостов</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-2">
+            <div class="card bg-warning text-white">
+                <div class="card-body text-center">
+                    <h4>{{ user_stats.unique_collections }}</h4>
+                    <p class="mb-0 small">Коллекций</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-primary text-white">
+                <div class="card-body text-center">
+                    {% if user_stats.avg_duration %}
+                    <h4>{{ user_stats.avg_duration|duration_format }}</h4>
+                    {% else %}
+                    <h4>—</h4>
+                    {% endif %}
+                    <p class="mb-0 small">Средняя длительность</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-secondary text-white">
+                <div class="card-body text-center">
+                    {% if user_stats.last_login %}
+                    <h4>{{ user_stats.last_login|datetime_format('%d.%m') }}</h4>
+                    {% else %}
+                    <h4>—</h4>
+                    {% endif %}
+                    <p class="mb-0 small">Последний вход</p>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Фильтры -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="fas fa-filter"></i>
+                        Фильтры и период
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <form method="GET" class="row g-3">
+                        <div class="col-md-3">
+                            <label class="form-label">Дата с:</label>
+                            <input type="date" class="form-control" name="date_from" value="{{ date_from }}">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Дата по:</label>
+                            <input type="date" class="form-control" name="date_to" value="{{ date_to }}">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Фильтр по хосту:</label>
+                            <input type="text" class="form-control" name="host_filter" 
+                                   value="{{ host_filter }}" placeholder="Введите имя хоста...">
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label">&nbsp;</label>
+                            <div class="d-grid">
+                                <button type="submit" class="btn btn-primary">
+                                    <i class="fas fa-search"></i>
+                                    Применить
+                                </button>
+                            </div>
+                        </div>
+                        <div class="col-12">
+                            <a href="{{ url_for('rdp.user_history', username=username) }}" 
+                               class="btn btn-outline-secondary btn-sm">
+                                <i class="fas fa-times"></i>
+                                Сбросить фильтры
+                            </a>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- История сессий -->
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">
+                        <i class="fas fa-history"></i>
+                        История RDP сессий
+                        {% if sessions %}
+                        <span class="badge bg-primary">{{ sessions|length }}</span>
+                        {% endif %}
+                    </h5>
+                    <!-- Пагинация -->
+                    {% if total_pages > 1 %}
+                    <nav>
+                        <ul class="pagination pagination-sm mb-0">
+                            {% if page > 1 %}
+                            <li class="page-item">
+                                <a class="page-link" href="{{ url_for('rdp.user_history', username=username, 
+                                    page=page-1, date_from=date_from, date_to=date_to, host_filter=host_filter) }}">
+                                    <i class="fas fa-chevron-left"></i>
+                                </a>
+                            </li>
+                            {% endif %}
+                            
+                            <li class="page-item active">
+                                <span class="page-link">{{ page }} из {{ total_pages }}</span>
+                            </li>
+                            
+                            {% if page < total_pages %}
+                            <li class="page-item">
+                                <a class="page-link" href="{{ url_for('rdp.user_history', username=username,
+                                    page=page+1, date_from=date_from, date_to=date_to, host_filter=host_filter) }}">
+                                    <i class="fas fa-chevron-right"></i>
+                                </a>
+                            </li>
+                            {% endif %}
+                        </ul>
+                    </nav>
+                    {% endif %}
+                </div>
+                <div class="card-body">
+                    {% if sessions %}
+                    <div class="table-responsive">
+                        <table class="table table-striped table-hover">
+                            <thead class="table-dark">
+                                <tr>
+                                    <th>Время входа</th>
+                                    <th>Время выхода</th>
+                                    <th>Удалённый хост</th>
+                                    <th>Коллекция</th>
+                                    <th>Тип подключения</th>
+                                    <th>Длительность</th>
+                                    <th>Статус</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for session in sessions %}
+                                <tr>
+                                    <td>
+                                        {% if session.login_time %}
+                                        <div>
+                                            <div>{{ session.login_time|datetime_format }}</div>
+                                            <div class="small text-muted">{{ session.login_time|time_ago }}</div>
+                                        </div>
+                                        {% else %}
+                                        <span class="text-muted">—</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if session.logout_time %}
+                                        <div>
+                                            <div>{{ session.logout_time|datetime_format }}</div>
+                                            <div class="small text-muted">{{ session.logout_time|time_ago }}</div>
+                                        </div>
+                                        {% else %}
+                                        <span class="badge bg-warning">
+                                            <i class="fas fa-clock"></i>
+                                            Активна
+                                        </span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if session.remote_host %}
+                                        <span class="badge bg-info">{{ session.remote_host }}</span>
+                                        {% else %}
+                                        <span class="text-muted">—</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if session.collection_name %}
+                                        <code class="small">{{ session.collection_name }}</code>
+                                        {% else %}
+                                        <span class="text-muted">—</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if session.connection_type %}
+                                        <span class="badge bg-secondary">{{ session.connection_type }}</span>
+                                        {% else %}
+                                        <span class="text-muted">—</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if session.duration_seconds %}
+                                        {% set duration = session.duration_seconds %}
+                                        {% if duration < 60 %}
+                                        <span class="badge bg-info">{{ duration|int }}с</span>
+                                        {% elif duration < 3600 %}
+                                        <span class="badge bg-info">{{ (duration/60)|int }}м</span>
+                                        {% else %}
+                                        <span class="badge bg-info">{{ (duration/3600)|round(1) }}ч</span>
+                                        {% endif %}
+                                        {% else %}
+                                        <span class="text-muted">—</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if session.logout_time %}
+                                        <span class="badge bg-success">
+                                            <i class="fas fa-check"></i>
+                                            Завершена
+                                        </span>
+                                        {% else %}
+                                        <span class="badge bg-warning">
+                                            <i class="fas fa-play"></i>
+                                            Активна
+                                        </span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <div class="text-center text-muted py-5">
+                        <i class="fas fa-history fa-4x mb-3"></i>
+                        <h4>Нет данных</h4>
+                        <p>История RDP сессий пуста для выбранного периода и фильтров</p>
+                        {% if date_from or date_to or host_filter %}
+                        <p class="small">Попробуйте изменить период или настройки фильтров</p>
+                        <a href="{{ url_for('rdp.user_history', username=username) }}" 
+                           class="btn btn-primary">
+                            <i class="fas fa-times"></i>
+                            Сбросить фильтры
+                        </a>
+                        {% endif %}
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.badge {
+    font-size: 0.75em;
+}
+.table td {
+    vertical-align: middle;
+}
+</style>
+{% endblock %}

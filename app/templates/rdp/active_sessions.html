@@ -1,0 +1,339 @@
+{% extends "base.html" %}
+
+{% block title %}Активные RDP сессии - RDP Мониторинг{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <h1 class="mb-4">
+                <i class="fas fa-users text-warning"></i>
+                Детальный просмотр активных RDP сессий
+            </h1>
+        </div>
+    </div>
+
+    <!-- Навигация -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-body">
+                    <div class="btn-group" role="group">
+                        <a href="{{ url_for('rdp.index') }}" class="btn btn-outline-primary">
+                            <i class="fas fa-arrow-left"></i>
+                            Назад к RDP мониторингу
+                        </a>
+                        <a href="{{ url_for('rdp.sessions_history') }}" class="btn btn-outline-info">
+                            <i class="fas fa-history"></i>
+                            История сессий
+                        </a>
+                        <a href="{{ url_for('main.index') }}" class="btn btn-outline-secondary">
+                            <i class="fas fa-home"></i>
+                            Главная
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Статистика -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card bg-primary text-white">
+                <div class="card-body text-center">
+                    <h3>{{ sessions|length }}</h3>
+                    <p class="mb-0">Всего активных сессий</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-success text-white">
+                <div class="card-body text-center">
+                    <h3>{{ users_sessions|length }}</h3>
+                    <p class="mb-0">Активных пользователей</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-info text-white">
+                <div class="card-body text-center">
+                    <h3>{{ sessions|map(attribute='remote_host')|unique|list|length }}</h3>
+                    <p class="mb-0">Удалённых хостов</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-warning text-white">
+                <div class="card-body text-center">
+                    <h3>{{ moment().format('HH:mm') }}</h3>
+                    <p class="mb-0">Время обновления</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {% if sessions %}
+    <!-- Группировка по пользователям -->
+    <div class="row">
+        <div class="col-12">
+            <div class="accordion" id="usersAccordion">
+                {% for username, user_sessions in users_sessions.items() %}
+                <div class="accordion-item">
+                    <h2 class="accordion-header" id="heading{{ loop.index }}">
+                        <button class="accordion-button {% if not loop.first %}collapsed{% endif %}" 
+                                type="button" 
+                                data-bs-toggle="collapse" 
+                                data-bs-target="#collapse{{ loop.index }}" 
+                                aria-expanded="{% if loop.first %}true{% else %}false{% endif %}" 
+                                aria-controls="collapse{{ loop.index }}">
+                            <div class="d-flex align-items-center w-100">
+                                <i class="fas fa-user text-primary me-3"></i>
+                                <strong>{{ username }}</strong>
+                                <span class="badge bg-primary ms-auto me-3">{{ user_sessions|length }} сессий</span>
+                            </div>
+                        </button>
+                    </h2>
+                    <div id="collapse{{ loop.index }}" 
+                         class="accordion-collapse collapse {% if loop.first %}show{% endif %}" 
+                         aria-labelledby="heading{{ loop.index }}" 
+                         data-bs-parent="#usersAccordion">
+                        <div class="accordion-body">
+                            <div class="table-responsive">
+                                <table class="table table-sm table-hover">
+                                    <thead class="table-dark">
+                                        <tr>
+                                            <th>Домен</th>
+                                            <th>Удалённый хост</th>
+                                            <th>Коллекция</th>
+                                            <th>Время входа</th>
+                                            <th>Длительность</th>
+                                            <th>Состояние</th>
+                                            <th>Действия</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for session in user_sessions %}
+                                        <tr>
+                                            <td>
+                                                {% if session.domain %}
+                                                <span class="badge bg-secondary">{{ session.domain }}</span>
+                                                {% else %}
+                                                <span class="text-muted">—</span>
+                                                {% endif %}
+                                            </td>
+                                            <td>
+                                                {% if session.remote_host %}
+                                                <span class="badge bg-info">{{ session.remote_host }}</span>
+                                                {% else %}
+                                                <span class="text-muted">—</span>
+                                                {% endif %}
+                                            </td>
+                                            <td>
+                                                {% if session.collection_name %}
+                                                <code class="small">{{ session.collection_name }}</code>
+                                                {% else %}
+                                                <span class="text-muted">—</span>
+                                                {% endif %}
+                                            </td>
+                                            <td>
+                                                {% if session.login_time %}
+                                                <div>
+                                                    <div>{{ session.login_time|datetime_format }}</div>
+                                                    <div class="small text-muted">{{ session.login_time|time_ago }}</div>
+                                                </div>
+                                                {% else %}
+                                                <span class="text-muted">—</span>
+                                                {% endif %}
+                                            </td>
+                                            <td>
+                                                {% if session.duration_seconds %}
+                                                <span class="badge bg-success">{{ session.duration_seconds|duration_format }}</span>
+                                                {% else %}
+                                                <span class="text-muted">—</span>
+                                                {% endif %}
+                                            </td>
+                                            <td>
+                                                {% set state_class = 'success' if session.state in ['0', '1'] else 'warning' if session.state in ['2', '3', '5'] else 'danger' %}
+                                                <span class="badge bg-{{ state_class }}">
+                                                    {{ session.state_label }}
+                                                </span>
+                                            </td>
+                                            <td>
+                                                <div class="btn-group btn-group-sm">
+                                                    <a href="{{ url_for('rdp.user_history', username=session.username) }}" 
+                                                       class="btn btn-outline-primary" 
+                                                       title="История пользователя">
+                                                        <i class="fas fa-history"></i>
+                                                    </a>
+                                                    {% if session.user_id %}
+                                                    <a href="{{ url_for('smb.user_detail', user_id=session.user_id) }}" 
+                                                       class="btn btn-outline-success" 
+                                                       title="SMB активность">
+                                                        <i class="fas fa-folder"></i>
+                                                    </a>
+                                                    {% endif %}
+                                                    <button class="btn btn-outline-info" 
+                                                            data-bs-toggle="modal" 
+                                                            data-bs-target="#sessionModal{{ loop.parent.loop.index }}_{{ loop.index }}"
+                                                            title="Детали сессии">
+                                                        <i class="fas fa-info-circle"></i>
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Модальные окна с деталями сессий -->
+    {% for username, user_sessions in users_sessions.items() %}
+        {% for session in user_sessions %}
+        <div class="modal fade" id="sessionModal{{ loop.parent.loop.index }}_{{ loop.index }}" tabindex="-1">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">
+                            <i class="fas fa-desktop"></i>
+                            Детали RDP сессии
+                        </h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="row">
+                            <div class="col-sm-4"><strong>Пользователь:</strong></div>
+                            <div class="col-sm-8">{{ session.username or 'N/A' }}</div>
+                        </div>
+                        <hr>
+                        <div class="row">
+                            <div class="col-sm-4"><strong>Домен:</strong></div>
+                            <div class="col-sm-8">
+                                {% if session.domain %}
+                                {{ session.domain }}
+                                {% else %}
+                                <span class="text-muted">Не указан</span>
+                                {% endif %}
+                            </div>
+                        </div>
+                        <hr>
+                        <div class="row">
+                            <div class="col-sm-4"><strong>Удалённый хост:</strong></div>
+                            <div class="col-sm-8">
+                                {% if session.remote_host %}
+                                {{ session.remote_host }}
+                                {% else %}
+                                <span class="text-muted">Не указан</span>
+                                {% endif %}
+                            </div>
+                        </div>
+                        <hr>
+                        <div class="row">
+                            <div class="col-sm-4"><strong>Коллекция:</strong></div>
+                            <div class="col-sm-8">
+                                {% if session.collection_name %}
+                                <code>{{ session.collection_name }}</code>
+                                {% else %}
+                                <span class="text-muted">Не указана</span>
+                                {% endif %}
+                            </div>
+                        </div>
+                        <hr>
+                        <div class="row">
+                            <div class="col-sm-4"><strong>Время входа:</strong></div>
+                            <div class="col-sm-8">
+                                {% if session.login_time %}
+                                {{ session.login_time|datetime_format }}
+                                <div class="small text-muted">{{ session.login_time|time_ago }}</div>
+                                {% else %}
+                                <span class="text-muted">Не указано</span>
+                                {% endif %}
+                            </div>
+                        </div>
+                        <hr>
+                        <div class="row">
+                            <div class="col-sm-4"><strong>Длительность:</strong></div>
+                            <div class="col-sm-8">
+                                {% if session.duration_seconds %}
+                                {{ session.duration_seconds|duration_format }}
+                                {% else %}
+                                <span class="text-muted">Не указана</span>
+                                {% endif %}
+                            </div>
+                        </div>
+                        <hr>
+                        <div class="row">
+                            <div class="col-sm-4"><strong>Состояние:</strong></div>
+                            <div class="col-sm-8">
+                                {% set state_class = 'success' if session.state in ['0', '1'] else 'warning' if session.state in ['2', '3', '5'] else 'danger' %}
+                                <span class="badge bg-{{ state_class }}">
+                                    {{ session.state_label }} ({{ session.state }})
+                                </span>
+                            </div>
+                        </div>
+                        {% if session.user_id %}
+                        <hr>
+                        <div class="row">
+                            <div class="col-sm-4"><strong>SMB активность:</strong></div>
+                            <div class="col-sm-8">
+                                <a href="{{ url_for('smb.user_detail', user_id=session.user_id) }}" 
+                                   class="btn btn-sm btn-outline-success">
+                                    <i class="fas fa-folder"></i>
+                                    Просмотреть файловую активность
+                                </a>
+                            </div>
+                        </div>
+                        {% endif %}
+                    </div>
+                    <div class="modal-footer">
+                        <a href="{{ url_for('rdp.user_history', username=session.username) }}" 
+                           class="btn btn-primary">
+                            <i class="fas fa-history"></i>
+                            История пользователя
+                        </a>
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Закрыть</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    {% endfor %}
+
+    {% else %}
+    <!-- Нет активных сессий -->
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-body">
+                    <div class="text-center text-muted py-5">
+                        <i class="fas fa-desktop fa-4x mb-3"></i>
+                        <h4>Нет активных RDP сессий</h4>
+                        <p>В данный момент нет подключённых пользователей</p>
+                        <button class="btn btn-primary" onclick="location.reload()">
+                            <i class="fas fa-sync-alt"></i>
+                            Обновить страницу
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Автообновление каждые 30 секунд
+    setInterval(() => {
+        location.reload();
+    }, 30000);
+});
+</script>
+{% endblock %}
