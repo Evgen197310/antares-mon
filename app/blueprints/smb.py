@@ -68,23 +68,30 @@ def index():
                 cursor.execute(users_query, params)
                 users = cursor.fetchall()
                 
-                # Получаем файлы с активными сессиями
-                files_query = """
-                    SELECT f.id, f.path, f.norm_path, COUNT(s.file_id) as active_sessions,
-                           MAX(s.last_seen) as last_activity
-                    FROM smb_files f
-                    LEFT JOIN active_smb_sessions s ON f.id = s.file_id
-                    GROUP BY f.id, f.path, f.norm_path
+                # Последние открытые файлы (из активных сессий)
+                recent_query = """
+                    SELECT f.id as file_id, f.path, u.id as user_id, u.username,
+                           s.open_time, s.initial_size, s.last_seen
+                    FROM active_smb_sessions s
+                    JOIN smb_files f ON s.file_id = f.id
+                    JOIN smb_users u ON s.user_id = u.id
                 """
-                params = []
-                
+                recent_params = []
                 if search_file:
-                    files_query += " HAVING f.path LIKE %s"
-                    params.append(f"%{search_file}%")
+                    recent_query += " WHERE f.path LIKE %s"
+                    recent_params.append(f"%{search_file}%")
+                recent_query += " ORDER BY s.last_seen DESC LIMIT 10"
+                cursor.execute(recent_query, recent_params)
+                recent = cursor.fetchall()
                 
-                files_query += " ORDER BY active_sessions DESC, f.path ASC LIMIT 50"
-                cursor.execute(files_query, params)
-                files = cursor.fetchall()
+                # Подготовка структуры, ожидаемой шаблоном
+                files = []
+                for r in recent:
+                    item = dict(r)
+                    item['id'] = r['file_id']
+                    item['filename'] = os.path.basename(r['path']) if r.get('path') else None
+                    item['file_size'] = r.get('initial_size')
+                    files.append(item)
                 
                 # Статистика
                 cursor.execute("SELECT COUNT(*) as total FROM active_smb_sessions")
