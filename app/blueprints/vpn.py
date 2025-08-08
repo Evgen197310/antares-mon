@@ -31,23 +31,48 @@ def read_mikrotik_map():
         return []
 
 def read_active_vpn_sessions():
-    """Чтение активных VPN сессий из файла состояния"""
+    """Чтение активных VPN сессий из файла состояния.
+    Поддерживает CSV без заголовка (username,outer_ip,inner_ip,time_start[,router]).
+    """
     try:
         state_file = current_app.config.get('VPN_STATE_FILE', '/var/log/mikrotik/ikev2_active.csv')
         if not os.path.exists(state_file):
             return []
-        
+
         sessions = []
         with open(state_file, 'r', encoding='utf-8') as f:
-            reader = csv.DictReader(f)
-            for row in reader:
-                sessions.append({
-                    'username': row.get('username', ''),
-                    'outer_ip': row.get('outer_ip', ''),
-                    'inner_ip': row.get('inner_ip', ''),
-                    'time_start': row.get('time_start', ''),
-                    'router': row.get('router', '')
-                })
+            peek = f.readline()
+            f.seek(0)
+            # Определяем есть ли заголовок по наличию буквенных ключей
+            header_like = any(k in peek.lower() for k in ['username', 'outer', 'inner', 'time'])
+            if header_like:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    sessions.append({
+                        'username': row.get('username', '') or row.get('user', ''),
+                        'outer_ip': row.get('outer_ip', '') or row.get('remote_address', ''),
+                        'inner_ip': row.get('inner_ip', ''),
+                        'time_start': row.get('time_start', '') or row.get('login_time', ''),
+                        'router': row.get('router', '') or row.get('device_name', '')
+                    })
+            else:
+                reader = csv.reader(f)
+                for row in reader:
+                    if not row:
+                        continue
+                    # Ожидаем минимум 4 колонки
+                    username = row[0].strip() if len(row) > 0 else ''
+                    outer_ip = row[1].strip() if len(row) > 1 else ''
+                    inner_ip = row[2].strip() if len(row) > 2 else ''
+                    time_start = row[3].strip() if len(row) > 3 else ''
+                    router = row[4].strip() if len(row) > 4 else ''
+                    sessions.append({
+                        'username': username,
+                        'outer_ip': outer_ip,
+                        'inner_ip': inner_ip,
+                        'time_start': time_start,
+                        'router': router,
+                    })
         return sessions
     except Exception as e:
         current_app.logger.error(f"Error reading VPN state: {e}")
@@ -57,24 +82,30 @@ def read_active_vpn_sessions():
 def index():
     """Главная страница VPN мониторинга"""
     try:
-        # Получаем активные сессии из CSV файла (как в исходном проекте)
-        active_sessions = []
-        try:
-            state_file = '/var/log/mikrotik/ikev2_active.csv'
-            with open(state_file, 'r', encoding='utf-8') as f:
-                for line in f:
-                    parts = line.strip().split(',')
-                    if len(parts) == 4:
-                        username, outer_ip, inner_ip, time_start = parts
-                        active_sessions.append({
-                            'username': username,
-                            'outer_ip': outer_ip,
-                            'inner_ip': inner_ip,
-                            'time_start': time_start
-                        })
-        except Exception as e:
-            current_app.logger.error(f"Error reading VPN active sessions from CSV: {e}")
-            active_sessions = []
+        # Получаем активные сессии из CSV файла (единый источник)
+        raw_sessions = read_active_vpn_sessions()
+        # Приводим к полям, ожидаемым шаблоном: username, remote_address, device_name, login_time, duration
+        sessions = []
+        for s in raw_sessions:
+            # Конвертируем время
+            login_dt = None
+            ts = s.get('time_start')
+            if ts:
+                try:
+                    login_dt = datetime.fromisoformat(ts)
+                except Exception:
+                    try:
+                        login_dt = datetime.strptime(ts, '%Y-%m-%d %H:%M:%S')
+                    except Exception:
+                        login_dt = None
+
+            sessions.append({
+                'username': s.get('username') or '',
+                'remote_address': s.get('outer_ip') or '',
+                'device_name': s.get('router') or '',
+                'login_time': login_dt,
+                'duration': None,
+            })
         
         # Получаем статистику из базы данных
         with db_manager.get_connection('vpn') as conn:
@@ -96,20 +127,26 @@ def index():
                     WHERE time_start >= DATE_SUB(NOW(), INTERVAL 7 DAY)
                 """)
                 week_stats = cursor.fetchone()
-        
-        # Дополняем данными из файла состояния
-        file_sessions = read_active_vpn_sessions()
-        
+
+        # Дополнительные метрики для карточек
+        mikrotik_devices = len(read_mikrotik_map())
+        stats = {
+            'active_sessions': len(sessions),
+            'today_sessions': (today_stats or {}).get('today_sessions', 0) if isinstance(today_stats, dict) else (today_stats['today_sessions'] if today_stats else 0),
+            'mikrotik_devices': mikrotik_devices,
+            'avg_duration': '0m',  # при необходимости вычислим позже
+        }
+
         return render_template('vpn/index.html',
-                             active_sessions=active_sessions,
-                             file_sessions=file_sessions,
+                             sessions=sessions,
+                             stats=stats,
                              today_stats=today_stats,
                              week_stats=week_stats)
     except Exception as e:
         current_app.logger.error(f"VPN index error: {e}")
         return render_template('vpn/index.html', 
-                             active_sessions=[], 
-                             file_sessions=[],
+                             sessions=[], 
+                             stats={'active_sessions': 0, 'today_sessions': 0, 'mikrotik_devices': 0, 'avg_duration': '0m'},
                              today_stats={},
                              week_stats={})
 
