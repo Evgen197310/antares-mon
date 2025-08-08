@@ -120,9 +120,9 @@
                                 <thead>
                                     <tr>
                                         <th>Пользователь</th>
-                                        <th>IP адрес</th>
-                                        <th>Устройство</th>
-                                        <th>Время подключения</th>
+                                        <th>Внешний IP</th>
+                                        <th>Внутренний IP</th>
+                                        <th>Время входа</th>
                                         <th>Длительность</th>
                                         <th>Статус</th>
                                     </tr>
@@ -131,21 +131,21 @@
                                     {% for session in sessions[:10] %}
                                     <tr>
                                         <td>
-                                            <strong>{{ session.username or 'N/A' }}</strong>
+                                            <a href="{{ url_for('vpn.user_detail', username=session.username) }}">
+                                                <strong>{{ session.username or 'N/A' }}</strong>
+                                            </a>
                                         </td>
                                         <td>
-                                            <code>{{ session.remote_address or 'N/A' }}</code>
+                                            <code class="text-danger">{{ session.remote_address or '—' }}</code>
                                         </td>
                                         <td>
-                                            {{ session.device_name or 'Unknown' }}
+                                            <code>{{ session.inner_ip or '—' }}</code>
                                         </td>
                                         <td>
-                                            {{ session.login_time.strftime('%d.%m.%Y %H:%M') if session.login_time else 'N/A' }}
+                                            {{ session.login_time.strftime('%d.%m.%Y %H:%M') if session.login_time else '—' }}
                                         </td>
                                         <td>
-                                            <span class="badge badge-info">
-                                                {{ session.duration or 'N/A' }}
-                                            </span>
+                                            <span class="badge bg-info text-dark vpn-duration" data-login-iso="{{ session.login_iso }}">{{ session.duration or '—' }}</span>
                                         </td>
                                         <td>
                                             <span class="badge badge-success">
@@ -172,5 +172,35 @@
             </div>
         </div>
     </div>
+    <script>
+    (function() {
+        try {
+            const serverNowIso = '{{ server_now|default("") }}';
+            const serverNow = serverNowIso ? new Date(serverNowIso) : new Date();
+            let clientStart = new Date();
+            function formatDur(ms) {
+                if (!ms || ms < 0) ms = 0;
+                const totalSec = Math.floor(ms / 1000);
+                const h = Math.floor(totalSec / 3600);
+                const m = Math.floor((totalSec % 3600) / 60);
+                return h > 0 ? `${h} ч ${m} м` : `${m} м`;
+            }
+            function tick() {
+                const now = new Date();
+                const deltaClient = now - clientStart;
+                const effectiveNow = new Date(serverNow.getTime() + deltaClient);
+                document.querySelectorAll('.vpn-duration').forEach(el => {
+                    const iso = el.getAttribute('data-login-iso');
+                    if (!iso) return;
+                    const login = new Date(iso);
+                    const dur = effectiveNow - login;
+                    el.textContent = formatDur(dur);
+                });
+            }
+            tick();
+            setInterval(tick, 30000); // обновлять каждые 30 секунд
+        } catch (e) { /* no-op */ }
+    })();
+    </script>
 </div>
 {% endblock %}

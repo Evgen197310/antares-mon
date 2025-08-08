@@ -76,7 +76,7 @@ def _parse_login_time(ts: str):
     return None
 
 def _format_duration_from(dt: datetime):
-    """Человекочитаемая длительность с момента dt до сейчас."""
+    """Человекочитаемая длительность с момента dt до сейчас (ru)."""
     if not dt:
         return 'N/A'
     try:
@@ -87,8 +87,8 @@ def _format_duration_from(dt: datetime):
         hours = total // 3600
         minutes = (total % 3600) // 60
         if hours > 0:
-            return f"{hours}h {minutes}m"
-        return f"{minutes}m"
+            return f"{hours} ч {minutes} м"
+        return f"{minutes} м"
     except Exception:
         return 'N/A'
 
@@ -146,7 +146,7 @@ def index():
     try:
         # Получаем активные сессии из CSV файла (единый источник)
         raw_sessions = read_active_vpn_sessions()
-        # Приводим к полям, ожидаемым шаблоном: username, remote_address, device_name, login_time, duration
+        # Приводим к полям, ожидаемым шаблоном: username, remote_address, inner_ip, device_name, login_time, duration
         sessions = []
         for s in raw_sessions:
             # Конвертация времени и расчёт длительности
@@ -155,8 +155,10 @@ def index():
             sessions.append({
                 'username': s.get('username') or '',
                 'remote_address': s.get('outer_ip') or '',
+                'inner_ip': s.get('inner_ip') or '',
                 'device_name': s.get('router') or '',
                 'login_time': login_dt,
+                'login_iso': login_dt.isoformat() if login_dt else '',
                 'duration': _format_duration_from(login_dt),
             })
         
@@ -194,7 +196,8 @@ def index():
                              sessions=sessions,
                              stats=stats,
                              today_stats=today_stats,
-                             week_stats=week_stats)
+                             week_stats=week_stats,
+                             server_now=datetime.now().isoformat())
     except Exception as e:
         current_app.logger.error(f"VPN index error: {e}")
         return render_template('vpn/index.html', 
