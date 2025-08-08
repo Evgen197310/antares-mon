@@ -136,10 +136,22 @@
                                             </a>
                                         </td>
                                         <td>
-                                            <code class="text-danger">{{ session.remote_address or '—' }}</code>
+                                            {% if session.remote_address %}
+                                                <a href="{{ url_for('vpn.history', outer_ip=session.remote_address) }}">
+                                                    <code class="text-danger">{{ session.remote_address }}</code>
+                                                </a>
+                                            {% else %}
+                                                <code>—</code>
+                                            {% endif %}
                                         </td>
                                         <td>
-                                            <code>{{ session.inner_ip or '—' }}</code>
+                                            {% if session.inner_ip %}
+                                                <a href="{{ url_for('vpn.history', inner_ip=session.inner_ip) }}">
+                                                    <code>{{ session.inner_ip }}</code>
+                                                </a>
+                                            {% else %}
+                                                <code>—</code>
+                                            {% endif %}
                                         </td>
                                         <td>
                                             {{ session.login_time.strftime('%d.%m.%Y %H:%M') if session.login_time else '—' }}

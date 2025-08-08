@@ -222,6 +222,8 @@ def history():
     try:
         page = request.args.get('page', 1, type=int)
         username = request.args.get('username', '').strip()
+        outer_ip = request.args.get('outer_ip', '').strip()
+        inner_ip = request.args.get('inner_ip', '').strip()
         days = request.args.get('days', 7, type=int)
         per_page = 50
         offset = (page - 1) * per_page
@@ -238,6 +240,12 @@ def history():
                 if username:
                     where_conditions.append("username LIKE %s")
                     params.append(f"%{username}%")
+                if outer_ip:
+                    where_conditions.append("outer_ip = %s")
+                    params.append(outer_ip)
+                if inner_ip:
+                    where_conditions.append("inner_ip = %s")
+                    params.append(inner_ip)
                 
                 where_clause = " AND ".join(where_conditions)
                 
@@ -269,6 +277,8 @@ def history():
                 return render_template('vpn/history.html',
                                      sessions=sessions,
                                      username=username,
+                                     outer_ip=outer_ip,
+                                     inner_ip=inner_ip,
                                      days=days,
                                      page=page,
                                      per_page=per_page,
