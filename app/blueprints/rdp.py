@@ -27,12 +27,22 @@ def get_rdp_active_sessions():
                     rows = cursor.fetchall()
                     
                     for row in rows:
-                        # Получаем user_id из SMB базы
+                        # Получаем user_id из SMB базы с нормализацией имени
                         user_id = None
                         username = row.get('username')
                         if username:
+                            base = str(username).lower().split('\\')[-1]
                             with conn_smb.cursor() as smb_cursor:
-                                smb_cursor.execute("SELECT id FROM smb_users WHERE username = %s", (username,))
+                                smb_cursor.execute(
+                                    """
+                                    SELECT id 
+                                    FROM smb_users 
+                                    WHERE LOWER(SUBSTRING_INDEX(username,'\\\\',-1)) = %s 
+                                       OR LOWER(username) = %s
+                                    LIMIT 1
+                                    """,
+                                    (base, base)
+                                )
                                 user_row = smb_cursor.fetchone()
                                 if user_row:
                                     user_id = user_row['id']
