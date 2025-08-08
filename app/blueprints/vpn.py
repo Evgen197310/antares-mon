@@ -30,6 +30,47 @@ def read_mikrotik_map():
         current_app.logger.error(f"Error reading MikroTik map: {e}")
         return []
 
+def _parse_login_time(ts: str):
+    """Парсим строку времени в datetime, совместимо с Python 3.6.
+    Поддерживаем варианты: 'YYYY-MM-DDTHH:MM:SS.%f', 'YYYY-MM-DDTHH:MM:SS',
+    'YYYY-MM-DD HH:MM:SS.%f', 'YYYY-MM-DD HH:MM:SS'.
+    """
+    if not ts:
+        return None
+    s = ts.strip()
+    # Варианты с 'T'
+    if 'T' in s:
+        s2 = s.replace('T', ' ')
+        for fmt in ('%Y-%m-%d %H:%M:%S.%f', '%Y-%m-%d %H:%M:%S'):
+            try:
+                return datetime.strptime(s2, fmt)
+            except Exception:
+                pass
+    # Варианты без 'T'
+    for fmt in ('%Y-%m-%d %H:%M:%S.%f', '%Y-%m-%d %H:%M:%S'):
+        try:
+            return datetime.strptime(s, fmt)
+        except Exception:
+            pass
+    return None
+
+def _format_duration_from(dt: datetime):
+    """Человекочитаемая длительность с момента dt до сейчас."""
+    if not dt:
+        return 'N/A'
+    try:
+        delta = datetime.now() - dt
+        total = int(delta.total_seconds())
+        if total < 0:
+            total = 0
+        hours = total // 3600
+        minutes = (total % 3600) // 60
+        if hours > 0:
+            return f"{hours}h {minutes}m"
+        return f"{minutes}m"
+    except Exception:
+        return 'N/A'
+
 def read_active_vpn_sessions():
     """Чтение активных VPN сессий из файла состояния.
     Поддерживает CSV без заголовка (username,outer_ip,inner_ip,time_start[,router]).
@@ -87,24 +128,15 @@ def index():
         # Приводим к полям, ожидаемым шаблоном: username, remote_address, device_name, login_time, duration
         sessions = []
         for s in raw_sessions:
-            # Конвертируем время
-            login_dt = None
+            # Конвертация времени и расчёт длительности
             ts = s.get('time_start')
-            if ts:
-                try:
-                    login_dt = datetime.fromisoformat(ts)
-                except Exception:
-                    try:
-                        login_dt = datetime.strptime(ts, '%Y-%m-%d %H:%M:%S')
-                    except Exception:
-                        login_dt = None
-
+            login_dt = _parse_login_time(ts)
             sessions.append({
                 'username': s.get('username') or '',
                 'remote_address': s.get('outer_ip') or '',
                 'device_name': s.get('router') or '',
                 'login_time': login_dt,
-                'duration': None,
+                'duration': _format_duration_from(login_dt),
             })
         
         # Получаем статистику из базы данных
