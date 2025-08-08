@@ -57,18 +57,28 @@ def read_active_vpn_sessions():
 def index():
     """Главная страница VPN мониторинга"""
     try:
-        # Получаем активные сессии из базы данных
+        # Получаем активные сессии из CSV файла (как в исходном проекте)
+        active_sessions = []
+        try:
+            state_file = '/var/log/mikrotik/ikev2_active.csv'
+            with open(state_file, 'r', encoding='utf-8') as f:
+                for line in f:
+                    parts = line.strip().split(',')
+                    if len(parts) == 4:
+                        username, outer_ip, inner_ip, time_start = parts
+                        active_sessions.append({
+                            'username': username,
+                            'outer_ip': outer_ip,
+                            'inner_ip': inner_ip,
+                            'time_start': time_start
+                        })
+        except Exception as e:
+            current_app.logger.error(f"Error reading VPN active sessions from CSV: {e}")
+            active_sessions = []
+        
+        # Получаем статистику из базы данных
         with db_manager.get_connection('vpn') as conn:
             with conn.cursor() as cursor:
-                cursor.execute("""
-                    SELECT username, outer_ip, inner_ip, time_start,
-                           TIMESTAMPDIFF(SECOND, time_start, NOW()) as duration_seconds
-                    FROM session_history 
-                    WHERE time_end IS NULL 
-                    ORDER BY time_start DESC
-                """)
-                active_sessions = cursor.fetchall()
-                
                 # Статистика за сегодня
                 cursor.execute("""
                     SELECT COUNT(*) as today_sessions,

@@ -70,7 +70,7 @@ def start_test_server(app):
     """Запуск тестового сервера"""
     print("🚀 Запуск тестового сервера...")
     try:
-        app.run(host='127.0.0.1', port=8000, debug=False, threaded=True)
+        app.run(host='127.0.0.1', port=5050, debug=False, threaded=True)
     except Exception as e:
         print(f"❌ Ошибка запуска сервера: {e}")
 
@@ -93,7 +93,7 @@ def test_endpoints():
     results = {}
     for endpoint, description in endpoints:
         try:
-            response = requests.get(f'http://127.0.0.1:8000{endpoint}', timeout=5)
+            response = requests.get(f'http://127.0.0.1:5050{endpoint}', timeout=5)
             if response.status_code == 200:
                 results[endpoint] = "OK"
                 print(f"✅ {description} ({endpoint}): OK")

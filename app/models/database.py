@@ -25,11 +25,25 @@ class DatabaseManager:
         Args:
             db_type: тип БД ('vpnstat', 'rdpstat', 'smbstat')
         """
-        config_attr = f'MYSQL_{db_type.upper()}'
-        if not hasattr(current_app.config, config_attr):
-            raise ValueError(f"Конфигурация для {db_type} не найдена")
+        # Маппинг имен БД для совместимости
+        db_mapping = {
+            'vpn': 'vpnstat',
+            'rdp': 'rdpstat', 
+            'smb': 'smbstat'
+        }
         
-        config = getattr(current_app.config, config_attr)
+        # Получаем правильное имя БД
+        actual_db_type = db_mapping.get(db_type, db_type)
+        
+        # Получаем конфигурацию БД из экземпляра Config
+        from app.config import Config
+        config_instance = Config()
+        
+        config_attr = f'MYSQL_{actual_db_type.upper()}'
+        if hasattr(config_instance, config_attr):
+            config = getattr(config_instance, config_attr)
+        else:
+            raise ValueError(f"Конфигурация для {db_type} не найдена")
         
         try:
             conn = pymysql.connect(

@@ -1,0 +1,222 @@
+{% extends "base.html" %}
+
+{% block title %}SMB Мониторинг{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <h1 class="mb-4">
+                <i class="fas fa-folder-open text-primary"></i>
+                SMB Мониторинг файловых ресурсов
+            </h1>
+        </div>
+    </div>
+
+    <!-- Быстрые действия -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="fas fa-bolt"></i>
+                        Быстрые действия
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="btn-group" role="group">
+                        <a href="{{ url_for('smb.files_open_now') }}" class="btn btn-success">
+                            <i class="fas fa-folder-open"></i>
+                            Открытые файлы
+                        </a>
+                        <a href="{{ url_for('smb.index') }}" class="btn btn-info">
+                            <i class="fas fa-users"></i>
+                            Пользователи
+                        </a>
+                        <a href="{{ url_for('smb.index') }}" class="btn btn-warning">
+                            <i class="fas fa-file"></i>
+                            Файлы
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Статистика -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card text-white bg-success">
+                <div class="card-header">
+                    <i class="fas fa-folder-open"></i>
+                    Открытые файлы
+                </div>
+                <div class="card-body">
+                    <h3>{{ stats.open_files if stats else 0 }}</h3>
+                    <p class="card-text">Сейчас открыто</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-white bg-info">
+                <div class="card-header">
+                    <i class="fas fa-users"></i>
+                    Активные пользователи
+                </div>
+                <div class="card-body">
+                    <h3>{{ stats.active_users if stats else 0 }}</h3>
+                    <p class="card-text">Подключено</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-white bg-warning">
+                <div class="card-header">
+                    <i class="fas fa-file"></i>
+                    Всего файлов
+                </div>
+                <div class="card-body">
+                    <h3>{{ stats.total_files if stats else 0 }}</h3>
+                    <p class="card-text">В системе</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-white bg-secondary">
+                <div class="card-header">
+                    <i class="fas fa-clock"></i>
+                    Активность за день
+                </div>
+                <div class="card-body">
+                    <h3>{{ stats.daily_activity if stats else 0 }}</h3>
+                    <p class="card-text">Операций</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Последние открытые файлы -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="fas fa-list"></i>
+                        Последние открытые файлы
+                    </h5>
+                </div>
+                <div class="card-body">
+                    {% if files %}
+                        <div class="table-responsive">
+                            <table class="table table-striped">
+                                <thead>
+                                    <tr>
+                                        <th>Файл</th>
+                                        <th>Пользователь</th>
+                                        <th>Время открытия</th>
+                                        <th>Размер</th>
+                                        <th>Статус</th>
+                                        <th>Действия</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for file in files[:10] %}
+                                    <tr>
+                                        <td>
+                                            <i class="fas fa-file"></i>
+                                            <strong>{{ file.filename or 'N/A' }}</strong>
+                                        </td>
+                                        <td>
+                                            <a href="{{ url_for('smb.user_detail', user_id=file.user_id) if file.user_id else '#' }}">
+                                                {{ file.username or 'Unknown' }}
+                                            </a>
+                                        </td>
+                                        <td>
+                                            {{ file.open_time.strftime('%d.%m.%Y %H:%M') if file.open_time else 'N/A' }}
+                                        </td>
+                                        <td>
+                                            <span class="badge badge-info">
+                                                {{ file.file_size or 'N/A' }}
+                                            </span>
+                                        </td>
+                                        <td>
+                                            <span class="badge badge-success">
+                                                Открыт
+                                            </span>
+                                        </td>
+                                        <td>
+                                            <a href="{{ url_for('smb.file_detail', file_id=file.id) if file.id else '#' }}" 
+                                               class="btn btn-sm btn-outline-primary">
+                                                <i class="fas fa-eye"></i>
+                                                Детали
+                                            </a>
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="text-center mt-3">
+                            <a href="{{ url_for('smb.files_open_now') }}" class="btn btn-primary">
+                                Показать все открытые файлы
+                            </a>
+                        </div>
+                    {% else %}
+                        <div class="alert alert-info text-center">
+                            <i class="fas fa-info-circle"></i>
+                            В данный момент нет открытых SMB файлов
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Активные пользователи -->
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="fas fa-users"></i>
+                        Активные пользователи
+                    </h5>
+                </div>
+                <div class="card-body">
+                    {% if users %}
+                        <div class="row">
+                            {% for user in users[:8] %}
+                            <div class="col-md-3 mb-3">
+                                <div class="card">
+                                    <div class="card-body text-center">
+                                        <i class="fas fa-user fa-2x text-primary mb-2"></i>
+                                        <h6 class="card-title">{{ user.username or 'Unknown' }}</h6>
+                                        <p class="card-text small text-muted">
+                                            {{ user.open_files_count or 0 }} файлов открыто
+                                        </p>
+                                        <a href="{{ url_for('smb.user_detail', user_id=user.id) if user.id else '#' }}" 
+                                           class="btn btn-sm btn-outline-primary">
+                                            Детали
+                                        </a>
+                                    </div>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                        <div class="text-center mt-3">
+                            <a href="{{ url_for('smb.index') }}" class="btn btn-primary">
+                                Показать всех пользователей
+                            </a>
+                        </div>
+                    {% else %}
+                        <div class="alert alert-info text-center">
+                            <i class="fas fa-info-circle"></i>
+                            В данный момент нет активных пользователей SMB
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

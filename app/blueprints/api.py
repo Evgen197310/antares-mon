@@ -58,26 +58,25 @@ def docs():
 def vpn_sessions():
     """Получить активные VPN сессии"""
     try:
-        with db_manager.get_connection('vpn') as conn:
-            with conn.cursor() as cursor:
-                cursor.execute("""
-                    SELECT username, outer_ip, inner_ip, time_start, 
-                           TIMESTAMPDIFF(SECOND, time_start, NOW()) as duration_seconds
-                    FROM session_history 
-                    WHERE time_end IS NULL 
-                    ORDER BY time_start DESC
-                """)
-                sessions = cursor.fetchall()
-                
-                for session in sessions:
-                    if session.get('time_start'):
-                        session['time_start'] = session['time_start'].isoformat()
-                
-                return jsonify({
-                    "status": "success",
-                    "count": len(sessions),
-                    "data": sessions
-                })
+        # Читаем активные сессии из CSV файла, как в исходном проекте
+        state_file = '/var/log/mikrotik/ikev2_active.csv'
+        sessions = []
+        with open(state_file, 'r', encoding='utf-8') as f:
+            for line in f:
+                parts = line.strip().split(',')
+                if len(parts) == 4:
+                    username, outer_ip, inner_ip, time_start = parts
+                    sessions.append({
+                        'username': username,
+                        'outer_ip': outer_ip,
+                        'inner_ip': inner_ip,
+                        'time_start': time_start
+                    })
+        return jsonify({
+            "status": "success",
+            "count": len(sessions),
+            "data": sessions
+        })
     except Exception as e:
         current_app.logger.error(f"VPN sessions API error: {e}")
         return jsonify({"status": "error", "message": str(e)}), 500

@@ -1,4 +1,5 @@
 from flask import Flask
+from datetime import datetime
 from app.config import Config
 from app.models.database import init_db
 
@@ -26,5 +27,10 @@ def create_app(config_class=Config):
     # Регистрация фильтров Jinja2
     from app.utils.filters import register_filters
     register_filters(app)
+    
+    # Контекстный процессор для глобальных переменных шаблонов
+    @app.context_processor
+    def inject_now():
+        return {'now': datetime.now()}
     
     return app

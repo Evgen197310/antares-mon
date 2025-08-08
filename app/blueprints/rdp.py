@@ -62,12 +62,29 @@ def index():
                 users_sessions[username] = []
             users_sessions[username].append(session)
         
+        # Базовая статистика (приводим к ожиданиям шаблона)
+        unique_users = len(users_sessions)
+        unique_hosts = len({s.get('remote_host') for s in sessions if s.get('remote_host')})
+        active_states = sum(1 for s in sessions if str(s.get('state')) in ['0', '1'])
+        stats = {
+            'unique_users': unique_users,
+            'unique_hosts': unique_hosts,
+            'active_states': active_states,
+            'total_sessions': len(sessions)
+        }
+        
         return render_template('rdp/index.html', 
                              sessions=sessions,
-                             users_sessions=users_sessions)
+                             users_sessions=users_sessions,
+                             active_sessions=sessions,
+                             stats=stats)
     except Exception as e:
         current_app.logger.error(f"RDP index error: {e}")
-        return render_template('rdp/index.html', sessions=[], users_sessions={})
+        return render_template('rdp/index.html', 
+                             sessions=[], 
+                             users_sessions={}, 
+                             active_sessions=[],
+                             stats={'unique_users': 0, 'unique_hosts': 0, 'active_states': 0, 'total_sessions': 0})
 
 @bp.route('/sessions-history')
 def sessions_history():

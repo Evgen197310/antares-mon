@@ -1,5 +1,5 @@
 from flask import Blueprint, render_template, current_app
-from app.models.database import get_vpn_connection, get_rdp_connection, get_smb_connection
+from app.models.database import db_manager
 import logging
 
 logger = logging.getLogger(__name__)
@@ -20,16 +20,16 @@ def index():
     
     try:
         # VPN статистика
-        with get_vpn_connection() as conn:
+        with db_manager.get_connection('vpn') as conn:
             with conn.cursor() as cur:
-                # Активные VPN сессии (из CSV файла)
+                # Активные VPN сессии (из CSV файла, как в исходном проекте)
                 try:
-                    state_file = current_app.config.PATHS.get('ikev2_state_file', '')
-                    if state_file:
-                        with open(state_file, 'r') as f:
-                            stats['vpn_active'] = sum(1 for line in f if line.strip())
-                except:
-                    pass
+                    state_file = '/var/log/mikrotik/ikev2_active.csv'
+                    with open(state_file, 'r', encoding='utf-8') as f:
+                        stats['vpn_active'] = sum(1 for line in f if line.strip())
+                except Exception as e:
+                    logger.error(f"Error reading VPN state file: {e}")
+                    stats['vpn_active'] = 0
                 
                 # Всего сессий за сегодня
                 cur.execute("""
@@ -46,7 +46,7 @@ def index():
     
     try:
         # RDP статистика
-        with get_rdp_connection() as conn:
+        with db_manager.get_connection('rdp') as conn:
             with conn.cursor() as cur:
                 # Активные RDP сессии
                 cur.execute("SELECT COUNT(*) as count FROM rdp_active_sessions")
@@ -69,7 +69,7 @@ def index():
     
     try:
         # SMB статистика
-        with get_smb_connection() as conn:
+        with db_manager.get_connection('smb') as conn:
             with conn.cursor() as cur:
                 # Активные SMB сессии
                 cur.execute("SELECT COUNT(*) as count FROM active_smb_sessions")

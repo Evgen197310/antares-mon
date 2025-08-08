@@ -1,0 +1,172 @@
+{% extends "base.html" %}
+
+{% block title %}VPN Мониторинг{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <h1 class="mb-4">
+                <i class="fas fa-shield-alt text-primary"></i>
+                VPN Мониторинг (IKEv2)
+            </h1>
+        </div>
+    </div>
+
+    <!-- Быстрые действия -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="fas fa-bolt"></i>
+                        Быстрые действия
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="btn-group" role="group">
+                        <a href="{{ url_for('vpn.index') }}" class="btn btn-success">
+                            <i class="fas fa-users"></i>
+                            Активные сессии
+                        </a>
+                        <a href="{{ url_for('vpn.history') }}" class="btn btn-info">
+                            <i class="fas fa-history"></i>
+                            История сессий
+                        </a>
+                        <a href="{{ url_for('vpn.topology') }}" class="btn btn-warning">
+                            <i class="fas fa-network-wired"></i>
+                            Топология MikroTik
+                        </a>
+                        <a href="{{ url_for('vpn.stats') }}" class="btn btn-secondary">
+                            <i class="fas fa-chart-bar"></i>
+                            Статистика
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Статистика -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card text-white bg-success">
+                <div class="card-header">
+                    <i class="fas fa-users"></i>
+                    Активные сессии
+                </div>
+                <div class="card-body">
+                    <h3>{{ stats.active_sessions if stats else 0 }}</h3>
+                    <p class="card-text">Подключено сейчас</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-white bg-info">
+                <div class="card-header">
+                    <i class="fas fa-history"></i>
+                    Всего за сегодня
+                </div>
+                <div class="card-body">
+                    <h3>{{ stats.today_sessions if stats else 0 }}</h3>
+                    <p class="card-text">Сессий сегодня</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-white bg-warning">
+                <div class="card-header">
+                    <i class="fas fa-server"></i>
+                    MikroTik устройств
+                </div>
+                <div class="card-body">
+                    <h3>{{ stats.mikrotik_devices if stats else 0 }}</h3>
+                    <p class="card-text">В топологии</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-white bg-secondary">
+                <div class="card-header">
+                    <i class="fas fa-clock"></i>
+                    Средняя длительность
+                </div>
+                <div class="card-body">
+                    <h3>{{ stats.avg_duration if stats else '0m' }}</h3>
+                    <p class="card-text">Время сессии</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Последние активные сессии -->
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="fas fa-list"></i>
+                        Последние активные сессии
+                    </h5>
+                </div>
+                <div class="card-body">
+                    {% if sessions %}
+                        <div class="table-responsive">
+                            <table class="table table-striped">
+                                <thead>
+                                    <tr>
+                                        <th>Пользователь</th>
+                                        <th>IP адрес</th>
+                                        <th>Устройство</th>
+                                        <th>Время подключения</th>
+                                        <th>Длительность</th>
+                                        <th>Статус</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for session in sessions[:10] %}
+                                    <tr>
+                                        <td>
+                                            <strong>{{ session.username or 'N/A' }}</strong>
+                                        </td>
+                                        <td>
+                                            <code>{{ session.remote_address or 'N/A' }}</code>
+                                        </td>
+                                        <td>
+                                            {{ session.device_name or 'Unknown' }}
+                                        </td>
+                                        <td>
+                                            {{ session.login_time.strftime('%d.%m.%Y %H:%M') if session.login_time else 'N/A' }}
+                                        </td>
+                                        <td>
+                                            <span class="badge badge-info">
+                                                {{ session.duration or 'N/A' }}
+                                            </span>
+                                        </td>
+                                        <td>
+                                            <span class="badge badge-success">
+                                                Активна
+                                            </span>
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="text-center mt-3">
+                            <a href="{{ url_for('vpn.index') }}" class="btn btn-primary">
+                                Показать все активные сессии
+                            </a>
+                        </div>
+                    {% else %}
+                        <div class="alert alert-info text-center">
+                            <i class="fas fa-info-circle"></i>
+                            В данный момент нет активных VPN сессий
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

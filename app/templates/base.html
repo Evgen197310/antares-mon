@@ -98,7 +98,7 @@
                 </div>
                 <div class="col-md-6 text-end">
                     <small class="text-muted">
-                        Время сервера: <span id="server-time">{{ moment().format('DD.MM.YYYY HH:mm:ss') }}</span>
+                        Время сервера: <span id="server-time">{{ now.strftime('%d.%m.%Y %H:%M:%S') if now else '' }}</span>
                     </small>
                 </div>
             </div>
