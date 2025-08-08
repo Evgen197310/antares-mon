@@ -34,8 +34,12 @@
                             История сессий
                         </a>
                         <a href="{{ url_for('vpn.topology') }}" class="btn btn-warning">
-                            <i class="fas fa-network-wired"></i>
-                            Топология MikroTik
+                            <i class="fas fa-list"></i>
+                            Список адресов MikroTik
+                        </a>
+                        <a href="{{ url_for('vpn.mikrotik_topology') }}" class="btn btn-outline-warning">
+                            <i class="fas fa-project-diagram"></i>
+                            Графическая топология
                         </a>
                         <a href="{{ url_for('vpn.stats') }}" class="btn btn-secondary">
                             <i class="fas fa-chart-bar"></i>

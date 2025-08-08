@@ -66,7 +66,7 @@
         <div class="col-md-3">
             <div class="card bg-warning text-white">
                 <div class="card-body text-center">
-                    <h3>{{ moment().format('HH:mm') }}</h3>
+                    <h3 id="rdp-update-time">—</h3>
                     <p class="mb-0">Время обновления</p>
                 </div>
             </div>
@@ -330,10 +330,15 @@
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
+    // Показать локальное время обновления
+    const el = document.getElementById('rdp-update-time');
+    if (el) {
+        const pad = n => String(n).padStart(2, '0');
+        const d = new Date();
+        el.textContent = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    }
     // Автообновление каждые 30 секунд
-    setInterval(() => {
-        location.reload();
-    }, 30000);
+    setInterval(() => { location.reload(); }, 30000);
 });
 </script>
 {% endblock %}

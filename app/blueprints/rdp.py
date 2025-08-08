@@ -98,47 +98,28 @@ def index():
 
 @bp.route('/sessions-history')
 def sessions_history():
-    """История RDP сессий всех пользователей"""
+    """История RDP: сводка по пользователям (как в исходном проекте)."""
     try:
-        page = request.args.get('page', 1, type=int)
-        per_page = 50
-        offset = (page - 1) * per_page
-        
         with db_manager.get_connection('rdp') as conn:
             with conn.cursor() as cursor:
-                # Получаем общее количество записей
-                cursor.execute("SELECT COUNT(*) as total FROM rdp_session_history")
-                total = cursor.fetchone()['total']
-                
-                # Получаем записи для текущей страницы
-                cursor.execute("""
-                    SELECT username, domain, collection_name, remote_host, 
-                           login_time, connection_type
-                    FROM rdp_session_history 
-                    ORDER BY login_time DESC
-                    LIMIT %s OFFSET %s
-                """, (per_page, offset))
-                
-                sessions = cursor.fetchall()
-                
-                # Пагинация
-                has_prev = page > 1
-                has_next = offset + per_page < total
-                prev_num = page - 1 if has_prev else None
-                next_num = page + 1 if has_next else None
-                
-                return render_template('rdp/sessions_history.html',
-                                     sessions=sessions,
-                                     page=page,
-                                     per_page=per_page,
-                                     total=total,
-                                     has_prev=has_prev,
-                                     has_next=has_next,
-                                     prev_num=prev_num,
-                                     next_num=next_num)
+                cursor.execute(
+                    """
+                    SELECT 
+                        username,
+                        MAX(login_time)   AS last_login,
+                        MAX(logout_time)  AS last_logout,
+                        COUNT(*)          AS total_sessions
+                    FROM rdp_session_history
+                    GROUP BY username
+                    ORDER BY last_login DESC
+                    """
+                )
+                users = cursor.fetchall()
+
+                return render_template('rdp/sessions_history.html', users=users)
     except Exception as e:
         current_app.logger.error(f"RDP sessions history error: {e}")
-        return render_template('rdp/sessions_history.html', sessions=[])
+        return render_template('rdp/sessions_history.html', users=[])
 
 @bp.route('/user/<username>')
 def user_history(username):
