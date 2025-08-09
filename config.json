@@ -1,0 +1,92 @@
+{
+  "mysql": {
+    "smbstat": {
+      "host": "127.0.0.1",
+      "user": "smbstat",
+      "password": "AfKot1973",
+      "database": "smbstat",
+      "charset": "utf8mb4"
+    },
+    "rdpstat": {
+      "host": "127.0.0.1",
+      "user": "vpnstat",
+      "password": "AfKot1973",
+      "database": "rdpstat",
+      "charset": "utf8mb4"
+    },
+    "vpnstat": {
+      "host": "127.0.0.1",
+      "user": "vpnstat",
+      "password": "AfKot1973",
+      "database": "vpnstat",
+      "charset": "utf8mb4"
+    }
+  },
+  "remote_hosts": {
+    "smb_server": {
+      "ssh_host": "shd-srv.antares.ru",
+      "ssh_user": "ep19",
+      "ssh_key": "/root/.ssh/id_rsa"
+    },
+    "mikrotik": {
+      "ssh_host": "192.168.1.1",
+      "ssh_user": "zabbix",
+      "ssh_key": "/root/.ssh/id_rsa"
+    }
+  },
+  "mikrotik": {
+    "router_access_ips": [
+      "192.168.1.1",
+      "192.168.16.1",
+      "10.10.30.1",
+      "10.10.30.2",
+      "192.168.20.1",
+      "192.168.22.1",
+      "192.168.63.1",
+      "192.168.64.1"
+    ],
+    "intranet_list_name": "MY-INTRANET",
+    "myrouters_list_name": "MY-ROUTERS",
+    "ssh_user": "zabbix",
+    "ssh_key": "/root/.ssh/id_rsa",
+    "ssh_known_hosts": "/root/.ssh/known_hosts"
+  },
+  "rdpmon": {
+    "ssh_host": "broker-2022.antares.ru",
+    "ssh_user": "ep19",
+    "ssh_key": "/root/.ssh/id_rsa",
+    "remote_json": "C:/RDPStats/active_sessions.json",
+    "local_json": "/var/lib/rdpmon/active_sessions.json",
+    "export_json": "/var/www/html/rdp_active_sessions.json",
+    "export_csv": "/var/www/html/rdp_active_sessions.csv"
+  },
+  "monitored_extensions": [".doc", ".docx", ".xls", ".xlsx", ".pdf"],
+  "monitored_paths": {
+    "user_downloads_prefixes": [
+      "E:\\Shares\\User-downloads$\\",
+      "E:\\Shares\\Users-files$\\"
+    ],
+    "shares_f_root": "F:\\Shares\\",
+    "shares_f_map": {
+      "PAU$": "ПАУ",
+      "Buh$": "Бухгалтерия",
+      "Common-01$": "Общие материалы",
+      "Practice$": "Практика",
+      "Scan$": "Сканирование",
+      "Soft$": "ПО",
+      "Shortcuts$": "Ярлыки"
+    }
+  },
+  "exclude_path_regex": "(?i)yandex[-_ ]?disk",
+  "purge_days": 180,
+  "paths": {
+    "mikrotik_map": "/opt/ike2web/data/full_map.csv",
+    "mikrotik_map_short": "/opt/ike2web/data/mikrotik_map.txt",
+    "mikrotik_rsyslog_rules": "/etc/infra/mikrotik-named-logs.conf",
+    "ikev2_state_file": "/var/log/mikrotik/ikev2_active.csv",
+    "mikrotik_log": "/var/log/mikrotik/ONTELECOM-Mikrotik.log",
+    "smbmon_log_dir": "/var/log/smbmon/",
+    "smbmon_log_file": "/var/log/smbmon/smbmon.log"
+  }
+}
+
