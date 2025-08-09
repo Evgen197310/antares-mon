@@ -168,17 +168,23 @@ test_application() {
         log "Тестирование основных endpoints..."
         
         # Проверка главной страницы
-        if curl -s -f http://localhost:8000/ > /dev/null; then
+        if curl -s -f http://localhost:5050/ > /dev/null; then
             success "Главная страница доступна"
         else
             warning "Главная страница недоступна"
         fi
         
         # Проверка API health
-        if curl -s -f http://localhost:8000/api/health > /dev/null; then
+        if curl -s -f http://localhost:5050/api/health > /dev/null; then
             success "API health endpoint доступен"
         else
             warning "API health endpoint недоступен"
+        fi
+        # Проверка основного health
+        if curl -s -f http://localhost:5050/health > /dev/null; then
+            success "Основной health endpoint доступен"
+        else
+            warning "Основной health endpoint недоступен"
         fi
         
         # Остановка тестового процесса
@@ -207,6 +213,8 @@ User=$(whoami)
 Group=$(whoami)
 WorkingDirectory=/opt/monitoring-web
 Environment=FLASK_ENV=production
+Environment=FLASK_PORT=5050
+Environment=FLASK_HOST=0.0.0.0
 Environment=PYTHONPATH=/opt/monitoring-web
 ExecStart=/usr/bin/python3 run.py
 Restart=always
@@ -245,8 +253,8 @@ start_application() {
         
         # Проверка доступности
         sleep 5
-        if curl -s -f http://localhost:8000/api/health > /dev/null; then
-            success "Приложение доступно по адресу: http://localhost:8000"
+        if curl -s -f http://localhost:5050/api/health > /dev/null; then
+            success "Приложение доступно по адресу: http://localhost:5050"
         else
             warning "Приложение запущено, но не отвечает на запросы"
         fi
@@ -262,15 +270,16 @@ show_deployment_info() {
     log "Информация о развертывании:"
     echo
     echo "🌐 Веб-интерфейс:"
-    echo "   Главная страница:    http://localhost:8000/"
-    echo "   VPN мониторинг:      http://localhost:8000/vpn/"
-    echo "   RDP мониторинг:      http://localhost:8000/rdp/"
-    echo "   SMB мониторинг:      http://localhost:8000/smb/"
+    echo "   Главная страница:    http://localhost:5050/"
+    echo "   VPN мониторинг:      http://localhost:5050/vpn/"
+    echo "   RDP мониторинг:      http://localhost:5050/rdp/"
+    echo "   SMB мониторинг:      http://localhost:5050/smb/"
     echo
     echo "📡 REST API:"
-    echo "   API документация:    http://localhost:8000/api/"
-    echo "   Состояние системы:   http://localhost:8000/api/health"
-    echo "   Общий статус:        http://localhost:8000/api/status"
+    echo "   API документация:    http://localhost:5050/api/"
+    echo "   Состояние системы (UI): http://localhost:5050/health"
+    echo "   Состояние системы (API): http://localhost:5050/api/health"
+    echo "   Общий статус:        http://localhost:5050/api/status"
     echo
     echo "🔧 Управление сервисом:"
     echo "   Статус:              sudo systemctl status monitoring-web"

@@ -1,4 +1,4 @@
-from flask import Blueprint, render_template, request, jsonify, current_app, send_from_directory
+from flask import Blueprint, render_template, request, jsonify, current_app, send_from_directory, redirect, url_for
 from app.models.database import db_manager
 from datetime import datetime, timedelta
 import logging
@@ -9,44 +9,46 @@ import ipaddress
 bp = Blueprint('vpn', __name__)
 
 def read_mikrotik_map():
-    """Чтение карты MikroTik роутеров"""
+    """Чтение карты MikroTik: возвращает список адресов на интерфейсах.
+    Единица списка — адрес (ip/mask) на интерфейсе устройства.
+    Поля: identity, ip, iface, type.
+    """
     try:
         map_file = current_app.config.get('MIKROTIK_MAP_FILE', '/opt/ike2web/data/full_map.csv')
         if not os.path.exists(map_file):
             return []
-        
-        routers = []
+
+        rows = []
         with open(map_file, 'r', encoding='utf-8') as f:
             peek = f.readline()
             f.seek(0)
-            header_like = any(k in peek.lower() for k in ['identity', 'ip', 'location', 'type'])
+            lower = peek.lower()
+            header_like = any(k in lower for k in ['identity', 'ip', 'iface', 'interface', 'type', 'mask'])
             if header_like:
                 reader = csv.DictReader(f)
                 for row in reader:
-                    routers.append({
-                        'identity': row.get('identity', ''),
-                        'ip': row.get('ip', ''),
-                        'location': row.get('location', ''),
-                        'type': row.get('type', '')
-                    })
+                    identity = (row.get('identity') or row.get('Identity') or '').strip()
+                    ip = (row.get('ip') or row.get('address') or '').strip()
+                    iface = (row.get('iface') or row.get('interface') or row.get('location') or '').strip()
+                    rtype = (row.get('type') or row.get('flag') or '').strip()
+                    if rtype in ('D', 'I'):
+                        rtype = {'D': 'Dynamic', 'I': 'Internal'}[rtype]
+                    rows.append({'identity': identity, 'ip': ip, 'iface': iface, 'type': rtype})
             else:
                 reader = csv.reader(f)
                 for row in reader:
                     if not row:
                         continue
+                    # Ожидаемый порядок: identity, ip, mask, iface, flag(optional)
                     identity = row[0].strip() if len(row) > 0 else ''
                     ip = row[1].strip() if len(row) > 1 else ''
-                    # Встречаются файлы вида: identity, ip, prefix, tunnel, code
-                    location = row[3].strip() if len(row) > 3 else 'Unknown'
-                    typecode = row[4].strip() if len(row) > 4 else ''
-                    rtype = {'D': 'Dynamic', 'I': 'Internal'}.get(typecode, typecode or '-')
-                    routers.append({
-                        'identity': identity,
-                        'ip': ip,
-                        'location': location or 'Unknown',
-                        'type': rtype,
-                    })
-        return routers
+                    mask = row[2].strip() if len(row) > 2 else ''
+                    iface = row[3].strip() if len(row) > 3 else ''
+                    flag = row[4].strip() if len(row) > 4 else ''
+                    rtype = {'D': 'Dynamic', 'I': 'Internal'}.get(flag, flag or '-')
+                    ip_show = f"{ip}/{mask}" if mask else ip
+                    rows.append({'identity': identity, 'ip': ip_show, 'iface': iface, 'type': rtype})
+        return rows
     except Exception as e:
         current_app.logger.error(f"Error reading MikroTik map: {e}")
         return []
@@ -208,13 +210,26 @@ def index():
 
 @bp.route('/topology')
 def topology():
-    """Топология MikroTik роутеров"""
+    """Топология сети (визуальный граф): сохраняем как /topology.
+    Для совместимости просто перенаправляем на существующий визуальный граф.
+    """
+    return redirect(url_for('vpn.mikrotik_topology'))
+
+@bp.route('/interfaces')
+def interfaces():
+    """Список адресов на интерфейсах MikroTik с агрегированными счетчиками."""
     try:
-        routers = read_mikrotik_map()
-        return render_template('vpn/topology.html', routers=routers)
+        rows = read_mikrotik_map()
+        selected_identity = request.args.get('identity', '').strip()
+        if selected_identity:
+            rows = [r for r in rows if (r.get('identity') or '').strip() == selected_identity]
+        address_count = len(rows)
+        device_count = len({r.get('identity') for r in rows if r.get('identity')})
+        interface_count = len({(r.get('identity'), r.get('iface')) for r in rows if r.get('identity') and r.get('iface')})
+        return render_template('vpn/topology.html', routers=rows, address_count=address_count, device_count=device_count, interface_count=interface_count, selected_identity=selected_identity)
     except Exception as e:
-        current_app.logger.error(f"VPN topology error: {e}")
-        return render_template('vpn/topology.html', routers=[])
+        current_app.logger.error(f"VPN interfaces error: {e}")
+        return render_template('vpn/topology.html', routers=[], address_count=0, device_count=0, interface_count=0, selected_identity='')
 
 @bp.route('/history')
 def history():

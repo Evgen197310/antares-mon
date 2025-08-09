@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}AI-запрос{% endblock %}
+{% block content %}
+<h1 class="mb-3"><i class="bi bi-robot"></i> AI-запрос к БД</h1>
+<div class="card mb-3">
+  <div class="card-body">
+    <form method="post" class="row g-2">
+      <div class="col-md-2">
+        <label class="form-label">База данных</label>
+        <select class="form-select" name="db">
+          {% for d in dbs %}
+          <option value="{{ d }}" {% if selected_db==d %}selected{% endif %}>{{ 'auto'==d and 'Авто' or d }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-8">
+        <label class="form-label">Запрос на естественном языке</label>
+        <input class="form-control" type="text" name="q" value="{{ nl_query }}" placeholder="Например: Покажи последние 50 активных RDP-сессий пользователя Иванов" required>
+      </div>
+      <div class="col-md-2 d-flex align-items-end">
+        <button class="btn btn-primary w-100" type="submit">Сгенерировать и выполнить</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+{% if summary_lines %}
+<div class="alert alert-info">
+  <strong>Краткий обзор:</strong>
+  <ul class="mb-0">
+    {% for s in summary_lines %}
+    <li>{{ s }}</li>
+    {% endfor %}
+  </ul>
+  <small class="text-muted">Обзор формируется AI на основе результатов по каждой БД</small>
+  </div>
+{% endif %}
+
+{% if results %}
+  {% for block in results %}
+  <div class="card mb-3">
+    <div class="card-header d-flex justify-content-between align-items-center">
+      <span>База: <strong>{{ block.db }}</strong></span>
+      <span class="text-muted">Строк: {{ block.rows|length }}</span>
+    </div>
+    <div class="card-body">
+      {% if block.sql %}
+      <div class="mb-2"><code>{{ block.sql }}</code></div>
+      {% endif %}
+      {% if block.rows and block.columns %}
+      <div class="table-responsive">
+        <table class="table table-striped table-sm mb-0">
+          <thead>
+          <tr>
+            {% for c in block.columns %}<th>{{ c }}</th>{% endfor %}
+          </tr>
+          </thead>
+          <tbody>
+          {% for r in block.rows %}
+          <tr>
+            {% for c in block.columns %}
+            <td>{{ r[c] }}</td>
+            {% endfor %}
+          </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+        <div class="text-muted">Нет данных</div>
+      {% endif %}
+    </div>
+  </div>
+  {% endfor %}
+{% endif %}
+{% endblock %}

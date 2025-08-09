@@ -1,3 +1,43 @@
+### Частые проблемы и решения
+
+- __[DB: доступ/пермишены]__
+  - Симптомы: `Access denied for user`, `Unknown database`, таймауты.
+  - Проверьте `config.json` (`mysql.host`, `mysql.user`, `mysql.password`, имена БД `vpnstat/rdpstat/smbstat`).
+  - Убедитесь в правах: `SHOW GRANTS FOR 'user'@'host'` содержит SELECT (и INSERT/UPDATE, если требуется).
+  - Проверьте сетевой доступ с хоста приложения до MySQL (`telnet <host> 3306` или `mysql -h ...`).
+
+- __[DB: кодировка/часовой пояс]__
+  - Для корректного отображения кириллицы и дат используйте `utf8mb4` и TZ сервера: `SET time_zone = '+03:00';`.
+  - В шаблонах применяются фильтры `datetime_format`, `time_ago`; несоответствие TZ даст неверные длительности.
+
+- __[DB: пул соединений]__
+  - Симптомы: подвисание при пиковой нагрузке.
+  - Уменьшите частоту автообновления страниц/дашборда, проверьте лимиты MySQL `max_connections`.
+
+- __[SSH: аутентификация]__
+  - Симптомы: `Permission denied (publickey)`, `no matching host key type`.
+  - Проверьте путь к ключу и его права `chmod 600 /path/to/key`.
+  - Сверьте тип ключа/алгоритмы на сервере (ed25519/rsa) и known_hosts.
+  - Убедитесь, что хост и порт совпадают с `remote_host.smb_server`/`ssh_port` в `config.json`.
+
+- __[SSH: сеть/фаервол]__
+  - Проверьте доступ по порту 22/кастомному: `nc -vz smb.example.com 22`.
+  - Если используется jump-host/bastion — настройте ProxyCommand/ProxyJump или соответствующие поля в конфиге.
+
+- __[VPN: CSV активных сессий]__
+  - Симптомы: пустой список VPN-сессий на дашборде при наличии активных подключений.
+  - Проверьте путь к CSV в `/etc/infra/config.json` (ключ, используемый модулем VPN) и права чтения для пользователя сервиса.
+  - Убедитесь, что генератор CSV выполняется и обновляет файл (cron/systemd timer), время модификации файла актуально (`stat <file>`).
+  - Проверьте разделители и заголовок CSV: соответствие ожидаемому формату (имена колонок, кодировка UTF-8).
+
+- __[Systemd: не стартует сервис]__
+  - Смотрите `journalctl -u monitoring-web -n 200 -f` — часто проблемы с PYTHONPATH/конфигом.
+  - Проверьте переменные окружения в unit-файле: `FLASK_PORT=5050`, `FLASK_HOST=0.0.0.0`, `PYTHONPATH=/opt/monitoring-web`.
+
+- __[Nginx: 502/504]__
+  - Увеличьте `proxy_read_timeout`/`proxy_connect_timeout`.
+  - Убедитесь, что приложение слушает 127.0.0.1:5050 и живо (`curl -f http://127.0.0.1:5050/health`).
+
 # Единая система мониторинга сетевой инфраструктуры
 
 Объединённое Flask веб-приложение для мониторинга VPN (IKEv2), RDP и SMB активности в сетевой инфраструктуре.
@@ -9,18 +49,21 @@
 - ✅ История подключений пользователей
 - ✅ Статистика использования VPN
 - ✅ Интеграция с MikroTik роутерами
+ - ✅ Отображение активных пользователей на дашборде (кликабельно)
 
 ### RDP Мониторинг
 - ✅ Активные RDP сессии в реальном времени
 - ✅ История подключений всех пользователей
 - ✅ Детальная статистика по пользователям
 - ✅ Группировка сессий и фильтрация
+ - ✅ Список активных пользователей на дашборде (кликабельно, с подсказкой коллекции)
 
 ### SMB Мониторинг
 - ✅ Открытые файлы и активные сессии
 - ✅ Мониторинг файловой активности пользователей
 - ✅ Скачивание файлов через SSH
 - ✅ Детальная история работы с файлами
+ - ✅ Список открытых файлов на дашборде (кликабельно, тултип с полным путём)
 
 ### REST API
 - ✅ Полноценный REST API для всех модулей
@@ -396,10 +439,17 @@ journalctl -u monitoring-web -n 200 -f
 ```
 
 ### Мониторинг состояния
-Используйте endpoint `/api/health` для мониторинга:
+UI health: `GET /health` возвращает JSON со следующими ключами:
+- `status` (ok|degraded)
+- `databases` (vpnstat/rdpstat/smbstat: ok|error)
+- `server_time` (ISO8601)
+- `uptime_seconds` (int)
+- `last_update` (ISO8601)
+
+API health: используйте endpoint `/api/health` для интеграций:
 ```bash
 #!/bin/bash
-response=$(curl -s http://localhost:8000/api/health)
+response=$(curl -s http://localhost:5050/api/health)
 status=$(echo $response | jq -r '.status')
 if [ "$status" != "healthy" ]; then
     echo "ALERT: Monitoring system is $status"
@@ -416,44 +466,75 @@ fi
 4. **Защитите SSH ключи** для SMB модуля
 5. **Регулярно обновляйте** зависимости
 
-### Настройка HTTPS с nginx (пример)
+### Настройка HTTPS с nginx (https://health.antares.ru/)
 ```nginx
+# HTTP -> HTTPS redirect
 server {
-    listen 443 ssl;
-    server_name monitoring.example.com;
-    
-    ssl_certificate /path/to/cert.pem;
-    ssl_certificate_key /path/to/key.pem;
-    
-    # Рекомендуемые заголовки
+    listen 80;
+    listen [::]:80;
+    server_name health.antares.ru;
+    return 301 https://$host$request_uri;
+}
+
+# HTTPS upstream to Flask app on 127.0.0.1:5050
+server {
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+    server_name health.antares.ru;
+
+    # Сертификаты Let's Encrypt
+    ssl_certificate /etc/letsencrypt/live/health.antares.ru/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/health.antares.ru/privkey.pem;
+    ssl_trusted_certificate /etc/letsencrypt/live/health.antares.ru/chain.pem;
+
+    # Безопасные заголовки
     add_header X-Frame-Options SAMEORIGIN always;
     add_header X-Content-Type-Options nosniff always;
     add_header Referrer-Policy no-referrer-when-downgrade;
     add_header X-XSS-Protection "1; mode=block";
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
 
     # Сжатие
     gzip on;
-    gzip_types text/plain text/css application/json application/javascript text/xml application/xml application/xml+rss text/javascript;
+    gzip_comp_level 5;
+    gzip_types text/plain text/css application/json application/javascript text/xml application/xml application/xml+rss text/javascript image/svg+xml;
 
-    # Проксирование к gunicorn
+    # Клиентские лимиты
+    client_max_body_size 20m;
+
+    # Основной прокси к приложению
     location / {
         proxy_pass http://127.0.0.1:5050;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Proto https;
         proxy_read_timeout 180s;
         proxy_connect_timeout 5s;
         proxy_send_timeout 60s;
+        proxy_redirect off;
     }
 
-    # Health-check (опционально)
+    # Health-check (легковесный)
     location /health {
         proxy_pass http://127.0.0.1:5050/health;
         access_log off;
     }
+
+    # API (опционально, отдельные правила)
+    location /api/ {
+        proxy_pass http://127.0.0.1:5050/api/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_read_timeout 180s;
+    }
 }
+
+# Проверка и перезапуск nginx:
+# sudo nginx -t && sudo systemctl reload nginx
 ```
 
 ## 🐛 Устранение неполадок
@@ -521,4 +602,4 @@ python -m py_compile app/*.py app/blueprints/*.py
 ---
 
 **Версия**: 2.0.0  
-**Последнее обновление**: 2025-08-08
+**Последнее обновление**: 2025-08-09

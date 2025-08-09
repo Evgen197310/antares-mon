@@ -54,6 +54,14 @@
                             <i class="bi bi-folder"></i> SMB
                         </a>
                     </li>
+                    {% if current_user and current_user.is_admin %}
+                    <li class="nav-item">
+                        <a class="nav-link {% if request.endpoint and request.endpoint.startswith('ai.') %}active{% endif %}" 
+                           href="{{ url_for('ai.query') }}">
+                            <i class="bi bi-robot"></i> AI-запрос
+                        </a>
+                    </li>
+                    {% endif %}
                 </ul>
                 
                 <ul class="navbar-nav">
@@ -64,10 +72,24 @@
                         <ul class="dropdown-menu">
                             <li><a class="dropdown-item" href="{{ url_for('api.docs') }}">API документация</a></li>
                             <li><a class="dropdown-item" href="{{ url_for('main.health_check') }}">Состояние системы</a></li>
+                            {% if current_user and current_user.is_admin %}
                             <li><hr class="dropdown-divider"></li>
-                            <li><a class="dropdown-item" href="/admin">Администрирование</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('admin.index') }}">Администрирование</a></li>
+                            {% endif %}
                         </ul>
                     </li>
+                    {% if current_user %}
+                    <li class="nav-item ms-3">
+                        <span class="navbar-text text-light"><i class="bi bi-person-circle"></i> {{ current_user.username }}</span>
+                    </li>
+                    <li class="nav-item ms-2">
+                        <a class="nav-link" href="{{ url_for('auth.logout') }}">Выход</a>
+                    </li>
+                    {% else %}
+                    <li class="nav-item ms-2">
+                        <a class="nav-link" href="{{ url_for('auth.login') }}">Вход</a>
+                    </li>
+                    {% endif %}
                 </ul>
             </div>
         </div>

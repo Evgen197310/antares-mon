@@ -10,17 +10,17 @@
 <div class="container-fluid">
   <div class="row">
     <div class="col-12">
-      <h1 class="mb-3"><i class="fas fa-project-diagram text-info"></i> Графическая схема L2TP сети MikroTik</h1>
+      <h1 class="mb-3"><i class="fas fa-project-diagram text-info"></i> Графическая схема L2TP сети <a href="{{ url_for('vpn.interfaces') }}" class="link-primary">MikroTik</a></h1>
       <div id="network"></div>
     </div>
   </div>
 </div>
 <script>
-  const nodes = {{ nodes|tojson }};
-  const edges = {{ edges|tojson }};
+  const topoNodes = {{ nodes|tojson }};
+  const topoEdges = {{ edges|tojson }};
   const network = new vis.Network(
     document.getElementById('network'),
-    { nodes: new vis.DataSet(nodes), edges: new vis.DataSet(edges) },
+    { nodes: new vis.DataSet(topoNodes), edges: new vis.DataSet(topoEdges) },
     {
       layout: { hierarchical: { enabled: true, direction: 'UD', sortMethod: 'hubsize', levelSeparation: 150, nodeSpacing: 200, treeSpacing: 300 } },
       physics: { enabled: false },
@@ -30,5 +30,14 @@
     }
   );
   network.fit();
+
+  // Переход к списку адресов конкретного роутера по клику на узел
+  network.on('click', function (params) {
+    if (params.nodes && params.nodes.length > 0) {
+      const identity = params.nodes[0];
+      const url = "{{ url_for('vpn.interfaces') }}" + '?identity=' + encodeURIComponent(identity);
+      window.location.href = url;
+    }
+  });
 </script>
 {% endblock %}

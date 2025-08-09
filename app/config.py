@@ -37,6 +37,13 @@ class Config:
                     "password": "password",
                     "database": "smbstat",
                     "charset": "utf8mb4"
+                },
+                "monitoring": {
+                    "host": "127.0.0.1",
+                    "user": "monitoring",
+                    "password": "password",
+                    "database": "monitoring",
+                    "charset": "utf8mb4"
                 }
             },
             "smb_ssh": {
@@ -65,6 +72,10 @@ class Config:
     def MYSQL_SMBSTAT(self):
         return self.config['mysql']['smbstat']
     
+    @property
+    def MYSQL_MONITORING(self):
+        return self.config['mysql']['monitoring']
+    
     # Пути и настройки
     @property
     def PATHS(self):
@@ -82,6 +93,18 @@ class Config:
     def REMOTE_HOST(self):
         """Legacy support: return singular 'remote_host' mapping if present."""
         return self.config.get('remote_host', {})
+
+    # Admin defaults and external API keys
+    @property
+    def ADMIN_DEFAULT(self):
+        return {
+            'username': self.config.get('admin_user'),
+            'password': self.config.get('admin_password')
+        }
+
+    @property
+    def OPENAI_API_KEY(self):
+        return self.config.get('openai_api_key')
     
     # Flask настройки
     SECRET_KEY = os.environ.get('SECRET_KEY', 'dev-key-change-in-production')

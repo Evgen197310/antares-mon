@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block title %}Администрирование — Пользователи{% endblock %}
+{% block content %}
+<h1 class="mb-3"><i class="bi bi-people"></i> Пользователи</h1>
+<div class="row">
+  <div class="col-md-8">
+    <div class="card mb-3">
+      <div class="card-header">Список пользователей</div>
+      <div class="card-body p-0">
+        <div class="table-responsive">
+          <table class="table table-striped mb-0">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Логин</th>
+                <th>Админ</th>
+                <th>Активен</th>
+                <th>Создан</th>
+                <th>Последний вход</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for u in users %}
+              <tr>
+                <td>{{ u.id }}</td>
+                <td>{{ u.username }}</td>
+                <td>
+                  <form method="post" action="{{ url_for('admin.users_toggle_admin', user_id=u.id) }}" class="d-inline">
+                    <input type="hidden" name="is_admin" value="{{ 0 if u.is_admin else 1 }}">
+                    <button class="btn btn-sm {{ 'btn-success' if u.is_admin else 'btn-outline-secondary' }}" type="submit">
+                      {{ 'Админ' if u.is_admin else 'Сделать админом' }}
+                    </button>
+                  </form>
+                </td>
+                <td>
+                  <form method="post" action="{{ url_for('admin.users_toggle_active', user_id=u.id) }}" class="d-inline">
+                    <input type="hidden" name="active" value="{{ 0 if u.active else 1 }}">
+                    <button class="btn btn-sm {{ 'btn-success' if u.active else 'btn-outline-secondary' }}" type="submit">
+                      {{ 'Активен' if u.active else 'Включить' }}
+                    </button>
+                  </form>
+                </td>
+                <td><small>{{ u.created_at }}</small></td>
+                <td><small>{{ u.last_login or '-' }}</small></td>
+                <td>
+                  <form method="post" action="{{ url_for('admin.users_reset_password', user_id=u.id) }}" class="d-inline">
+                    <div class="input-group input-group-sm">
+                      <input class="form-control" type="password" name="password" placeholder="Новый пароль">
+                      <button class="btn btn-outline-danger" type="submit">Сбросить</button>
+                    </div>
+                  </form>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card">
+      <div class="card-header">Добавить пользователя</div>
+      <div class="card-body">
+        <form method="post" action="{{ url_for('admin.users_new') }}">
+          <div class="mb-3">
+            <label class="form-label">Логин</label>
+            <input class="form-control" type="text" name="username" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Пароль</label>
+            <input class="form-control" type="password" name="password" required>
+          </div>
+          <button class="btn btn-primary w-100" type="submit">Создать</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

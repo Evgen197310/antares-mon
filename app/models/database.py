@@ -23,13 +23,15 @@ class DatabaseManager:
         Контекстный менеджер для подключений к БД
         
         Args:
-            db_type: тип БД ('vpnstat', 'rdpstat', 'smbstat')
+            db_type: тип БД ('vpnstat', 'rdpstat', 'smbstat', 'monitoring' и др.)
         """
         # Маппинг имен БД для совместимости
         db_mapping = {
             'vpn': 'vpnstat',
             'rdp': 'rdpstat', 
-            'smb': 'smbstat'
+            'smb': 'smbstat',
+            'auth': 'monitoring',
+            'monitoring': 'monitoring'
         }
         
         # Получаем правильное имя БД
