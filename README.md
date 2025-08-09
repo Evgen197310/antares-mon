@@ -60,6 +60,40 @@ monitoring-web/
 └── README.md                   # Документация
 ```
 
+## 🌍 Доступ извне
+
+- __Прямой доступ без Nginx__: откройте порт 5050 на сервере/фаерволе и зайдите по адресу:
+  - `http://<PUBLIC_IP>:5050/` или `http://<DOMAIN>:5050/`
+  - Примеры: `http://203.0.113.10:5050/`, `http://monitoring.example.com:5050/`
+
+- __firewalld (RHEL/CentOS/Rocky)__:
+```bash
+sudo firewall-cmd --add-port=5050/tcp --permanent
+sudo firewall-cmd --reload
+```
+
+- __ufw (Ubuntu/Debian)__:
+```bash
+sudo ufw allow 5050/tcp
+sudo ufw reload
+```
+
+- __NAT/роутер__: пробросьте внешний порт 5050 на IP сервера или используйте Nginx на 443 с проксированием на 127.0.0.1:5050 (см. раздел Nginx). Тогда вход снаружи будет по `https://<DOMAIN>/` без указания порта.
+
+- __SELinux (если включен)__:
+```bash
+sudo setsebool -P httpd_can_network_connect 1   # для Nginx-прокси
+```
+
+После открытия порта/настройки Nginx доступен Веб‑UI:
+```
+Главная: http://<HOST>:5050/
+VPN:     http://<HOST>:5050/vpn/
+RDP:     http://<HOST>:5050/rdp/
+SMB:     http://<HOST>:5050/smb/
+API:     http://<HOST>:5050/api/
+```
+
 ### Troubleshooting systemd/gunicorn
 
 - __Проверить логи__: `journalctl -u monitoring-web -n 200 -f`
@@ -279,6 +313,17 @@ sudo systemctl restart monitoring-web
 ```bash
 systemctl status --no-pager -l monitoring-web
 journalctl -u monitoring-web -n 200 -f
+```
+
+#### Graceful reload (без простоя)
+В unit-файл добавьте строку (у нас уже добавлено):
+```
+ExecReload=/bin/kill -HUP $MAINPID
+```
+После правок выполните:
+```bash
+sudo systemctl daemon-reload
+sudo systemctl reload monitoring-web   # перечитает конфиг без остановки воркеров
 ```
 
 ## 🌐 Использование
