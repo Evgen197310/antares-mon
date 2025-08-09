@@ -1,6 +1,7 @@
 from flask import Blueprint, render_template, current_app
 from app.models.database import db_manager
 import logging
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
@@ -17,6 +18,10 @@ def index():
         'smb_active': 0,
         'smb_users_active': 0
     }
+    # Списки для UI
+    vpn_users = []            # [{username}]
+    rdp_users = []            # [{username, collection_name}]
+    smb_files = []            # [{id, name, full_path}]
     
     try:
         # VPN статистика
@@ -24,9 +29,13 @@ def index():
             with conn.cursor() as cur:
                 # Активные VPN сессии (из CSV файла, как в исходном проекте)
                 try:
-                    state_file = '/var/log/mikrotik/ikev2_active.csv'
-                    with open(state_file, 'r', encoding='utf-8') as f:
-                        stats['vpn_active'] = sum(1 for line in f if line.strip())
+                    # Импортируем утилиту чтения сессий из VPN blueprint, чтобы не дублировать
+                    from app.blueprints.vpn import read_active_vpn_sessions
+                    sessions = read_active_vpn_sessions() or []
+                    stats['vpn_active'] = len(sessions)
+                    # Список текущих пользователей (уникальные, сортируем алфавитно, ограничим 10)
+                    usernames = sorted({(s.get('username') or '').strip() for s in sessions if s.get('username')})
+                    vpn_users = [{'username': u} for u in usernames[:10]]
                 except Exception as e:
                     logger.error(f"Error reading VPN state file: {e}")
                     stats['vpn_active'] = 0
@@ -49,10 +58,23 @@ def index():
         with db_manager.get_connection('rdp') as conn:
             with conn.cursor() as cur:
                 # Активные RDP сессии
-                cur.execute("SELECT COUNT(*) as count FROM rdp_active_sessions")
-                result = cur.fetchone()
-                if result:
-                    stats['rdp_active'] = result['count']
+                cur.execute("""
+                    SELECT username, collection_name
+                    FROM rdp_active_sessions
+                    ORDER BY username ASC
+                """)
+                rows = cur.fetchall() or []
+                stats['rdp_active'] = len(rows)
+                # Список пользователей с коллекцией
+                seen = set()
+                for r in rows:
+                    u = (r.get('username') or '').strip()
+                    if not u or u in seen:
+                        continue
+                    rdp_users.append({'username': u, 'collection_name': r.get('collection_name')})
+                    seen.add(u)
+                    if len(rdp_users) >= 10:
+                        break
                 
                 # Всего сессий за сегодня
                 cur.execute("""
@@ -85,18 +107,43 @@ def index():
                 result = cur.fetchone()
                 if result:
                     stats['smb_users_active'] = result['count']
+
+                # Текущие открытые файлы (имя для показа + полный путь во всплывающей подсказке)
+                cur.execute(
+                    """
+                    SELECT f.id, f.path
+                    FROM active_smb_sessions s
+                    LEFT JOIN smb_files f ON s.file_id = f.id
+                    WHERE f.id IS NOT NULL
+                    ORDER BY f.path
+                    LIMIT 10
+                    """
+                )
+                for row in cur.fetchall() or []:
+                    path = row.get('path') or ''
+                    # преобразуем двойные подчёркивания в разделители, берём только имя для показа
+                    display = (path or '').replace('__', '\\').replace('/', '\\').split('\\')[-1]
+                    # привести регистр: первая буква заглавная, остальное маленькое; расширение нижним регистром
+                    base, ext = (display.rsplit('.', 1) + [''])[:2]
+                    base = (base.strip().lower().capitalize()) if base else ''
+                    ext = ('.' + ext.lower()) if ext else ''
+                    smb_files.append({'id': row['id'], 'name': base + ext, 'full_path': path})
     
     except Exception as e:
         logger.error(f"Ошибка получения SMB статистики: {e}")
     
-    return render_template('index.html', stats=stats)
+    return render_template('index.html', stats=stats,
+                           vpn_users=vpn_users,
+                           rdp_users=rdp_users,
+                           smb_files=smb_files)
 
 @bp.route('/health')
 def health_check():
     """Health check для мониторинга состояния приложения"""
     health = {
         'status': 'ok',
-        'databases': {}
+        'databases': {},
+        'server_time': datetime.now().isoformat(),
     }
     
     # Проверка подключений к БД через db_manager
@@ -114,5 +161,15 @@ def health_check():
         except Exception as e:
             health['databases'][label] = f'error: {str(e)}'
             health['status'] = 'degraded'
-    
+    # Uptime и last_update
+    try:
+        started = current_app.config.get('STARTED_AT')
+        if started:
+            uptime_seconds = int((datetime.now() - started).total_seconds())
+        else:
+            uptime_seconds = None
+        health['uptime_seconds'] = uptime_seconds
+        health['last_update'] = datetime.now().isoformat()
+    except Exception:
+        pass
     return health

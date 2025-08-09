@@ -39,6 +39,13 @@ class Config:
                     "charset": "utf8mb4"
                 }
             },
+            "smb_ssh": {
+                "host": "127.0.0.1",
+                "user": "smbuser",
+                "port": 22,
+                "key_file": "/etc/infra/ssh/id_rsa",  # или оставьте пустым и используйте password
+                "password": ""  # опционально, если нет ключа
+            },
             "paths": {
                 "ikev2_state_file": "/var/log/mikrotik/ikev2_active.csv",
                 "mikrotik_map": "/opt/monitoring-web/data/full_map.csv"
@@ -66,6 +73,15 @@ class Config:
     @property
     def REMOTE_HOSTS(self):
         return self.config.get('remote_hosts', {})
+
+    @property
+    def SMB_SSH(self):
+        return self.config.get('smb_ssh', {})
+
+    @property
+    def REMOTE_HOST(self):
+        """Legacy support: return singular 'remote_host' mapping if present."""
+        return self.config.get('remote_host', {})
     
     # Flask настройки
     SECRET_KEY = os.environ.get('SECRET_KEY', 'dev-key-change-in-production')

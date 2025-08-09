@@ -34,7 +34,15 @@
                 <tr>
                   <td><code>{{ s.session_id }}</code></td>
                   <td><span class="badge bg-secondary">{{ s.username }}</span></td>
-                  <td>{{ s.path }}</td>
+                  <td>
+                    {% if s.file_id %}
+                      <a href="{{ url_for('smb.download_file', file_id=s.file_id) }}" class="text-decoration-none" title="Скачать файл">
+                        {{ s.path }}
+                      </a>
+                    {% else %}
+                      {{ s.path }}
+                    {% endif %}
+                  </td>
                   <td>{{ s.host }}</td>
                   <td>{{ s.open_time|datetime_format }}</td>
                   <td>

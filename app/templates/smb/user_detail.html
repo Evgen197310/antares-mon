@@ -57,7 +57,15 @@
               <tbody>
                 {% for s in active_sessions %}
                 <tr>
-                  <td>{{ s.path }}</td>
+                  <td>
+                    {% if s.file_id %}
+                      <a href="{{ url_for('smb.download_file', file_id=s.file_id) }}" class="text-decoration-none" title="Скачать файл">
+                        {{ s.path }}
+                      </a>
+                    {% else %}
+                      {{ s.path }}
+                    {% endif %}
+                  </td>
                   <td>{{ s.host }}</td>
                   <td>{{ s.open_time|datetime_format }}</td>
                   <td>
@@ -106,7 +114,15 @@
               <tbody>
                 {% for h in history_sessions %}
                 <tr>
-                  <td>{{ h.path }}</td>
+                  <td>
+                    {% if h.file_id %}
+                      <a href="{{ url_for('smb.download_file', file_id=h.file_id) }}" class="text-decoration-none" title="Скачать файл">
+                        {{ h.path }}
+                      </a>
+                    {% else %}
+                      {{ h.path }}
+                    {% endif %}
+                  </td>
                   <td>{{ h.open_time|datetime_format }}</td>
                   <td>{{ h.close_time|datetime_format }}</td>
                   <td>{{ h.initial_size|human_filesize }}</td>

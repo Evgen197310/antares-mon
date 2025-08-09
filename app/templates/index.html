@@ -36,6 +36,14 @@
                         </div>
                     </div>
                 </div>
+                {% if vpn_users %}
+                <div class="mt-2 small">
+                    <strong>Сейчас:</strong>
+                    {% for u in vpn_users %}
+                      <a href="{{ url_for('vpn.user_detail', username=u.username) }}" class="me-2">{{ u.username }}</a>
+                    {% endfor %}
+                </div>
+                {% endif %}
                 <div class="mt-3">
                     <a href="{{ url_for('vpn.index') }}" class="btn btn-primary btn-sm">
                         <i class="bi bi-arrow-right"></i> Подробнее
@@ -68,6 +76,14 @@
                         </div>
                     </div>
                 </div>
+                {% if rdp_users %}
+                <div class="mt-2 small">
+                    <strong>Сейчас:</strong>
+                    {% for u in rdp_users %}
+                      <a href="{{ url_for('rdp.user_history', username=u.username) }}" class="me-2" title="{{ u.collection_name or '' }}">{{ u.username }}</a>
+                    {% endfor %}
+                </div>
+                {% endif %}
                 <div class="mt-3">
                     <a href="{{ url_for('rdp.index') }}" class="btn btn-success btn-sm">
                         <i class="bi bi-arrow-right"></i> Подробнее
@@ -100,6 +116,14 @@
                         </div>
                     </div>
                 </div>
+                {% if smb_files %}
+                <div class="mt-2 small">
+                    <strong>Сейчас:</strong>
+                    {% for f in smb_files %}
+                      <a href="{{ url_for('smb.download_file', file_id=f.id) }}" class="me-2" title="{{ f.full_path }}">{{ f.name }}</a>
+                    {% endfor %}
+                </div>
+                {% endif %}
                 <div class="mt-3">
                     <a href="{{ url_for('smb.index') }}" class="btn btn-warning btn-sm">
                         <i class="bi bi-arrow-right"></i> Подробнее
@@ -193,12 +217,6 @@
 
 {% block scripts %}
 <script>
-// Обновление времени сервера
-function updateServerTime() {
-    const now = new Date();
-    document.getElementById('server-time').textContent = now.toLocaleString('ru-RU');
-}
-
 // Загрузка состояния системы
 function loadSystemStatus() {
     fetch('/health')
@@ -213,6 +231,21 @@ function loadSystemStatus() {
             }
             
             statusDiv.innerHTML = html;
+
+            // Обновляем uptime и last-update
+            const uptimeSpan = document.getElementById('uptime');
+            const lastSpan = document.getElementById('last-update');
+            if ('uptime_seconds' in data && uptimeSpan) {
+                const s = data.uptime_seconds || 0;
+                const h = Math.floor(s / 3600);
+                const m = Math.floor((s % 3600) / 60);
+                const sec = s % 60;
+                uptimeSpan.textContent = `${h}ч ${m}м ${sec}с`;
+            }
+            if ('last_update' in data && lastSpan) {
+                const d = new Date(data.last_update);
+                lastSpan.textContent = d.toLocaleString('ru-RU');
+            }
         })
         .catch(error => {
             document.getElementById('system-status').innerHTML = 
@@ -222,11 +255,9 @@ function loadSystemStatus() {
 
 // Инициализация
 document.addEventListener('DOMContentLoaded', function() {
-    updateServerTime();
     loadSystemStatus();
     
-    // Обновление каждые 30 секунд
-    setInterval(updateServerTime, 30000);
+    // Обновление
     setInterval(loadSystemStatus, 60000);
 });
 </script>

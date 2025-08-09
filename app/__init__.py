@@ -6,7 +6,20 @@ from app.models.database import init_db
 def create_app(config_class=Config):
     """Factory для создания Flask приложения"""
     app = Flask(__name__)
+    # Загружаем базовые настройки из класса
     app.config.from_object(config_class)
+    # Инициализируем экземпляр конфигурации для доступа к динамическим данным (JSON)
+    try:
+        cfg_instance = config_class()
+        # Прокидываем настройки SSH для SMB в Flask config
+        app.config['SMB_SSH'] = cfg_instance.SMB_SSH
+        # Прокидываем legacy-карту remote_host (используется в старом проекте)
+        app.config['REMOTE_HOST'] = cfg_instance.REMOTE_HOST
+    except Exception:
+        # Без критического падения, в логах будет видно отсутствие SSH настроек
+        pass
+    # Сохраняем время старта приложения для uptime
+    app.config['STARTED_AT'] = datetime.now()
     # Авто‑перезагрузка шаблонов (полезно при правках UI)
     try:
         import os

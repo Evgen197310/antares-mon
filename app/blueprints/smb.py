@@ -14,27 +14,115 @@ bp = Blueprint('smb', __name__)
 def debug_ping():
     return 'smb-ok'
 
+@bp.route('/debug-ssh')
+def debug_ssh():
+    """Проверка SSH-подключения (отладка). Не возвращает секреты."""
+    try:
+        cfg = current_app.config.get('SMB_SSH', {}) or {}
+        info = {
+            'host': cfg.get('host'),
+            'user': cfg.get('user'),
+            'port': cfg.get('port', 22),
+            'has_key_file': bool(cfg.get('key_file')),
+            'has_password': bool(cfg.get('password')),
+        }
+        ssh = get_ssh_connection()
+        if not ssh:
+            return jsonify({'status': 'error', 'message': 'ssh_connect_failed', 'info': info}), 500
+        try:
+            # Проба открыть SFTP и закрыть
+            sftp = ssh.open_sftp()
+            sftp.listdir('.')  # лёгкая операция
+            sftp.close()
+            ssh.close()
+            return jsonify({'status': 'ok', 'info': info})
+        except Exception as e:
+            try:
+                ssh.close()
+            except Exception:
+                pass
+            current_app.logger.error(f"SSH SFTP error: {e}")
+            return jsonify({'status': 'error', 'message': 'sftp_failed', 'error': str(e), 'info': info}), 500
+    except Exception as e:
+        current_app.logger.error(f"debug_ssh error: {e}")
+        return jsonify({'status': 'error', 'message': 'internal_error', 'error': str(e)}), 500
+
 def normalize_username(username):
     """Нормализация имени пользователя"""
     if not username:
         return username
     return username.lower().replace('\\', '_').replace('/', '_')
 
+def _beautify_filename(fname: str) -> str:
+    """Только первая буква заглавная, остальное маленькими, расширение нижним регистром."""
+    if not fname:
+        return ''
+    name, ext = os.path.splitext(fname)
+    name = (name or '').strip().lower().capitalize()
+    ext = (ext or '').lower()
+    return name + ext
+
+def _extract_display_name_from_path(path_value: str) -> str:
+    """Получить читаемое имя файла из хранимого пути.
+    Особый случай: в БД путь может храниться как 'F__shares_pau$_...'
+    где '__' означает разделитель каталога. Преобразуем и берём последний сегмент.
+    """
+    if not path_value:
+        return ''
+    p = str(path_value)
+    # Нормализуем потенциальные разделители: '__' -> '\\'
+    p = p.replace('__', '\\').replace('/', '\\')
+    # Берём последний сегмент
+    last = p.split('\\')[-1]
+    return _beautify_filename(last)
+
 def get_ssh_connection():
     """Получить SSH подключение к SMB серверу"""
     try:
         config = current_app.config
-        ssh_config = config.get('SMB_SSH', {})
+        ssh_config = (config.get('SMB_SSH') or {}).copy()
+        # Fallback: legacy mapping remote_host.smb_server
+        if not ssh_config or not ssh_config.get('host'):
+            legacy = (config.get('REMOTE_HOST') or {}).get('smb_server') or {}
+            if legacy:
+                ssh_config.setdefault('host', legacy.get('ssh_host'))
+                ssh_config.setdefault('user', legacy.get('ssh_user'))
+                ssh_config.setdefault('key_file', legacy.get('ssh_key'))
+                if legacy.get('ssh_port'):
+                    ssh_config.setdefault('port', legacy.get('ssh_port'))
         
+        host = ssh_config.get('host')
+        user = ssh_config.get('user')
+        key_file = ssh_config.get('key_file')
+        password = ssh_config.get('password')  # опционально
+        port = ssh_config.get('port', 22)
+
+        if not host or not user:
+            current_app.logger.error("SMB_SSH config error: 'host' and 'user' are required")
+            return None
+
         ssh = paramiko.SSHClient()
         ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         
-        ssh.connect(
-            hostname=ssh_config.get('host'),
-            username=ssh_config.get('user'),
-            key_filename=ssh_config.get('key_file'),
-            timeout=10
-        )
+        connect_kwargs = {
+            'hostname': host,
+            'username': user,
+            'timeout': 15,
+            'port': port,
+            'allow_agent': False,
+            'look_for_keys': False,
+        }
+        if key_file:
+            connect_kwargs['key_filename'] = key_file
+            # для ключа пароль обычно не нужен
+        elif password:
+            connect_kwargs['password'] = password
+        else:
+            # ни ключа, ни пароля — скорее всего не подключимся
+            current_app.logger.error("SMB_SSH config error: either 'key_file' or 'password' must be provided")
+            return None
+
+        ssh.connect(**connect_kwargs)
         
         return ssh
     except Exception as e:
@@ -126,7 +214,7 @@ def files_open_now():
         with db_manager.get_connection('smb') as conn:
             with conn.cursor() as cursor:
                 cursor.execute("""
-                    SELECT s.session_id, u.username, f.path, c.host,
+                    SELECT s.session_id, u.username, f.path, f.id AS file_id, c.host,
                            s.open_time, s.last_seen, s.initial_size
                     FROM active_smb_sessions s
                     JOIN smb_users u ON s.user_id = u.id
@@ -180,7 +268,7 @@ def user_detail(user_id):
                 
                 # Активные сессии
                 cursor.execute("""
-                    SELECT f.path, c.host, s.open_time, s.last_seen, s.initial_size
+                    SELECT f.id AS file_id, f.path, c.host, s.open_time, s.last_seen, s.initial_size
                     FROM active_smb_sessions s
                     JOIN smb_files f ON s.file_id = f.id
                     JOIN smb_clients c ON s.client_id = c.id
@@ -192,7 +280,7 @@ def user_detail(user_id):
                 # История сессий
                 date_from = datetime.now() - timedelta(days=days)
                 history_query = """
-                    SELECT f.path, h.open_time, h.close_time, h.initial_size, h.final_size
+                    SELECT f.id AS file_id, f.path, h.open_time, h.close_time, h.initial_size, h.final_size
                     FROM smb_session_history h
                     JOIN smb_files f ON h.file_id = f.id
                     WHERE h.user_id = %s AND h.open_time >= %s
@@ -379,8 +467,18 @@ def download_file(file_id):
             sftp.close()
             ssh.close()
             
-            # Определяем имя файла для скачивания
-            filename = os.path.basename(file_path)
+            # Определяем имя файла для скачивания (только имя, первая буква заглавная)
+            filename = _extract_display_name_from_path(file_path)
+
+            from flask import after_this_request
+            @after_this_request
+            def cleanup(response):
+                try:
+                    if os.path.exists(temp_path):
+                        os.remove(temp_path)
+                except Exception as ce:
+                    current_app.logger.warning(f"Temp file cleanup error: {ce}")
+                return response
             
             return send_file(temp_path, 
                            as_attachment=True, 
@@ -388,7 +486,10 @@ def download_file(file_id):
                            mimetype='application/octet-stream')
         
         except Exception as e:
-            ssh.close()
+            try:
+                ssh.close()
+            except Exception:
+                pass
             current_app.logger.error(f"File download error: {e}")
             return f"Ошибка скачивания файла: {e}", 500
             
