@@ -7,6 +7,17 @@ def create_app(config_class=Config):
     """Factory для создания Flask приложения"""
     app = Flask(__name__)
     app.config.from_object(config_class)
+    # Авто‑перезагрузка шаблонов (полезно при правках UI)
+    try:
+        import os
+        auto_reload = os.environ.get('FLASK_TEMPLATES_AUTO_RELOAD', '1') in ('1', 'true', 'True')
+    except Exception:
+        auto_reload = True
+    app.config['TEMPLATES_AUTO_RELOAD'] = auto_reload
+    # Отключаем кэш шаблонов и уменьшаем кэш статики
+    app.jinja_env.auto_reload = True
+    app.jinja_env.cache = {}
+    app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
     
     # Инициализация БД
     init_db(app)

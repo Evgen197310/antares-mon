@@ -60,6 +60,18 @@ monitoring-web/
 └── README.md                   # Документация
 ```
 
+### Troubleshooting systemd/gunicorn
+
+- __Проверить логи__: `journalctl -u monitoring-web -n 200 -f`
+- __Порт занят__: освободить 5050, либо сменить `FLASK_PORT` в `/etc/default/monitoring-web` и `systemctl restart monitoring-web`.
+- __Изменили unit/env и не видите эффекта__: `systemctl daemon-reload` после правок unit, затем `systemctl restart monitoring-web`.
+- __Таймауты на длинных запросах__: увеличьте `--timeout` (например, 180) в `ExecStart` и/или `proxy_read_timeout` в nginx.
+- __Нагрузка/производительность__: настройте число воркеров `--workers` (ориентир: CPU*2) и `--threads` (I/O-bound). Пример: `--workers 4 --threads 2`.
+- __Грейсфул перезапуск__: добавьте в unit `ExecReload=/bin/kill -HUP $MAINPID` и используйте `systemctl reload monitoring-web`.
+- __Пути/переменные окружения__: задайте через `/etc/default/monitoring-web` (см. раздел Systemd). Убедитесь, что `CONFIG_PATH` указывает на валидный JSON.
+- __SELinux/AppArmor/Firewall__: проверьте разрешения на порт и доступ к файлам (`setenforce 0` для теста, затем корректные политики). Проверьте `firewalld`/`iptables`.
+- __Проверка работоспособности__: `curl -sS http://127.0.0.1:5050/health` должен вернуть статус 200.
+
 ## 📋 Требования
 
 ### Системные требования
@@ -217,53 +229,70 @@ CREATE TABLE smb_session_history (
 python run.py
 ```
 
-### Режим продакшн (с Gunicorn)
+### Режим продакшн (Gunicorn)
+Рекомендуемый способ — запуск через Gunicorn и systemd. Точка входа — `wsgi.py`.
+
 ```bash
 pip install gunicorn
-gunicorn -w 4 -b 0.0.0.0:8000 run:app
+# Локальный старт без systemd (для проверки)
+gunicorn --workers 3 --threads 2 --timeout 120 --bind 0.0.0.0:5050 wsgi:app
 ```
 
-### Systemd сервис
-Создайте файл `/etc/systemd/system/monitoring-web.service`:
+### Systemd сервис (рекомендовано)
+1) Файл окружения `/etc/default/monitoring-web`:
+```bash
+FLASK_PORT=5050
+FLASK_HOST=0.0.0.0
+FLASK_DEBUG=False
+FLASK_TEMPLATES_AUTO_RELOAD=1
+```
 
+2) Unit-файл `/etc/systemd/system/monitoring-web.service`:
 ```ini
 [Unit]
-Description=Network Monitoring Web Application
-After=network.target mysql.service
+Description=Monitoring Web Application (Flask via Gunicorn)
+After=network.target
 
 [Service]
-Type=exec
-User=monitoring
-Group=monitoring
+User=root
+Group=root
 WorkingDirectory=/opt/monitoring-web
-Environment=FLASK_ENV=production
-ExecStart=/usr/bin/python3 run.py
+EnvironmentFile=-/etc/default/monitoring-web
+ExecStart=/usr/bin/python3 -m gunicorn --workers 3 --threads 2 --timeout 120 --bind 0.0.0.0:${FLASK_PORT} wsgi:app
 Restart=always
-RestartSec=10
+RestartSec=2
+StandardOutput=journal
+StandardError=journal
 
 [Install]
 WantedBy=multi-user.target
 ```
 
-Активация:
+3) Запуск и автозагрузка:
 ```bash
 sudo systemctl daemon-reload
 sudo systemctl enable monitoring-web
-sudo systemctl start monitoring-web
+sudo systemctl restart monitoring-web
+```
+
+4) Проверка:
+```bash
+systemctl status --no-pager -l monitoring-web
+journalctl -u monitoring-web -n 200 -f
 ```
 
 ## 🌐 Использование
 
 ### Веб-интерфейс
-- **Главная страница**: `http://localhost:8000/`
-- **VPN мониторинг**: `http://localhost:8000/vpn/`
-- **RDP мониторинг**: `http://localhost:8000/rdp/`
-- **SMB мониторинг**: `http://localhost:8000/smb/`
+- **Главная страница**: `http://localhost:5050/`
+- **VPN мониторинг**: `http://localhost:5050/vpn/`
+- **RDP мониторинг**: `http://localhost:5050/rdp/`
+- **SMB мониторинг**: `http://localhost:5050/smb/`
 
 ### REST API
-- **API документация**: `http://localhost:8000/api/`
-- **Состояние системы**: `http://localhost:8000/api/health`
-- **Общий статус**: `http://localhost:8000/api/status`
+- **API документация**: `http://localhost:5050/api/`
+- **Состояние системы**: `http://localhost:5050/api/health`
+- **Общий статус**: `http://localhost:5050/api/status`
 
 #### VPN API
 - `GET /api/vpn/sessions` - Активные VPN сессии
@@ -285,16 +314,16 @@ sudo systemctl start monitoring-web
 
 ```bash
 # Получить активные VPN сессии
-curl http://localhost:8000/api/vpn/sessions
+curl http://localhost:5050/api/vpn/sessions
 
 # Получить историю RDP сессий пользователя
-curl "http://localhost:8000/api/rdp/history?username=john&limit=50"
+curl "http://localhost:5050/api/rdp/history?username=john&limit=50"
 
 # Проверить состояние системы
-curl http://localhost:8000/api/health
+curl http://localhost:5050/api/health
 
 # Получить общую статистику
-curl http://localhost:8000/api/status
+curl http://localhost:5050/api/status
 ```
 
 ## 🔧 Конфигурация
@@ -316,9 +345,9 @@ export CONFIG_PATH=/etc/infra/config.json
 ## 📊 Мониторинг и логи
 
 ### Логи приложения
-Логи записываются в stdout и могут быть перенаправлены:
+Через systemd/journalctl:
 ```bash
-python run.py > /var/log/monitoring-web.log 2>&1
+journalctl -u monitoring-web -n 200 -f
 ```
 
 ### Мониторинг состояния
@@ -342,7 +371,7 @@ fi
 4. **Защитите SSH ключи** для SMB модуля
 5. **Регулярно обновляйте** зависимости
 
-### Настройка HTTPS с nginx
+### Настройка HTTPS с nginx (пример)
 ```nginx
 server {
     listen 443 ssl;
@@ -351,10 +380,33 @@ server {
     ssl_certificate /path/to/cert.pem;
     ssl_certificate_key /path/to/key.pem;
     
+    # Рекомендуемые заголовки
+    add_header X-Frame-Options SAMEORIGIN always;
+    add_header X-Content-Type-Options nosniff always;
+    add_header Referrer-Policy no-referrer-when-downgrade;
+    add_header X-XSS-Protection "1; mode=block";
+
+    # Сжатие
+    gzip on;
+    gzip_types text/plain text/css application/json application/javascript text/xml application/xml application/xml+rss text/javascript;
+
+    # Проксирование к gunicorn
     location / {
-        proxy_pass http://127.0.0.1:8000;
+        proxy_pass http://127.0.0.1:5050;
+        proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 180s;
+        proxy_connect_timeout 5s;
+        proxy_send_timeout 60s;
+    }
+
+    # Health-check (опционально)
+    location /health {
+        proxy_pass http://127.0.0.1:5050/health;
+        access_log off;
     }
 }
 ```
