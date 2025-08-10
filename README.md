@@ -24,6 +24,16 @@ systemctl restart rsyslog
 ```
 0 3 * * * /usr/local/bin/mikrotik-discover.sh && /usr/local/bin/auto-rsyslog-rules-generate.sh && systemctl restart rsyslog && /usr/local/bin/sync-lists.py >> /var/log/mikrotik_discover.log 2>&1
 ```
+
+### Быстрый установщик (Plan A)
+
+Для удобства добавлен скрипт установки модулей из репозитория:
+
+```bash
+sudo scripts/install-mikrotik-modules.sh
+```
+
+Скрипт копирует файлы в `/usr/local/bin/` и создаёт каталоги `/var/lib/mikrotik` и `/var/log/mikrotik`. Продакшен‑настройки не меняются автоматически.
 ### Частые проблемы и решения
 
 - __[DB: доступ/пермишены]__
@@ -223,7 +233,7 @@ pip install -r requirements.txt
 ```
 
 ### 3. Конфигурация
-Убедитесь, что файл `/etc/infra/config.json` содержит настройки баз данных. Дополнительно проверьте пути к источникам VPN-данных (CSV и карта MikroTik):
+Убедитесь, что файл `/etc/infra/config.json` содержит настройки баз данных и параметры модулей MikroTik. Пример полной конфигурации (подставьте свои значения):
 
 ```json
 {
@@ -236,7 +246,7 @@ pip install -r requirements.txt
       "charset": "utf8mb4"
     },
     "rdpstat": {
-      "host": "localhost", 
+      "host": "localhost",
       "user": "rdp_user",
       "password": "password",
       "database": "rdpstat",
@@ -244,11 +254,27 @@ pip install -r requirements.txt
     },
     "smbstat": {
       "host": "localhost",
-      "user": "smb_user", 
+      "user": "smb_user",
       "password": "password",
       "database": "smbstat",
       "charset": "utf8mb4"
     }
+  },
+  "paths": {
+    "mikrotik_map": "/var/lib/mikrotik/full_map.csv",
+    "mikrotik_map_short": "/etc/rsyslog.d/mikrotik_map.txt",
+    "mikrotik_rsyslog_rules": "/etc/rsyslog.d/50-mikrotik.conf",
+    "mikrotik_log": "/var/log/mikrotik/routers.log"
+  },
+  "mikrotik": {
+    "router_access_ips": [
+      "10.0.0.1",
+      "10.0.1.1"
+    ],
+    "ssh_user": "mtadmin",
+    "ssh_key": "/root/.ssh/id_ed25519",
+    "intranet_list_name": "MY-INTRANET",
+    "myrouters_list_name": "MY-ROUTERS"
   },
   "ssh": {
     "smb_server": {
@@ -262,17 +288,19 @@ pip install -r requirements.txt
         "ssh_key": "/root/.ssh/id_ed25519"
       }
     },
-    "remote_hosts": {                       
-      "mikrotik": {                        
-        "ssh_user": "mtadmin",           
+    "remote_hosts": {
+      "mikrotik": {
+        "ssh_user": "mtadmin",
         "ssh_key": "/root/.ssh/id_ed25519"
-      }                                      
-    }                                        
+      }
+    }
   }
 }
 ```
 
-Примечание: разные утилиты читают SSH-параметры из `mikrotik.*`, `remote_host.mikrotik` или `remote_hosts.mikrotik` (например, `clear-addr.py`). Рекомендуется задать все блоки одинаково для совместимости.
+Примечание:
+- Разные утилиты читают SSH‑параметры из `mikrotik.*`, `remote_host.mikrotik` или `remote_hosts.mikrotik` (например, `clear-addr.py`). Рекомендуется задать все блоки одинаково для совместимости.
+- Путь `paths.mikrotik_log` указывает директорию для логов MikroTik; файл создаётся правилом rsyslog на основании карты.
 
 ### 4. Структура баз данных
 
