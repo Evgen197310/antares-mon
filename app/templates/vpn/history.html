@@ -69,9 +69,10 @@
                   <th>Пользователь</th>
                   <th>Внешний IP</th>
                   <th>Внутренний IP</th>
+                  <th>Маршрутизатор</th>
                   <th>Начало</th>
                   <th>Окончание</th>
-                  <th>Длительность, сек</th>
+                  <th>Длительность</th>
                 </tr>
               </thead>
               <tbody>
@@ -96,9 +97,10 @@
                       </a>
                     {% else %}<span class="text-muted">—</span>{% endif %}
                   </td>
+                  <td>{{ s.device_name or '-' }}</td>
                   <td>{{ s.time_start or '—' }}</td>
                   <td>{{ s.time_end or '—' }}</td>
-                  <td>{{ s.duration if s.duration is not none else '—' }}</td>
+                  <td>{{ s.duration_seconds|duration_format }}</td>
                 </tr>
                 {% endfor %}
               </tbody>

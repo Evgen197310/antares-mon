@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+
+{% block title %}Активные VPN сессии{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <h1 class="mb-2">
+                <i class="fas fa-users text-success"></i>
+                Активные VPN сессии
+            </h1>
+            <nav aria-label="breadcrumb" class="mb-4">
+                <ol class="breadcrumb">
+                    <li class="breadcrumb-item"><a href="{{ url_for('main.index') }}">Главная</a></li>
+                    <li class="breadcrumb-item"><a href="{{ url_for('vpn.index') }}">VPN</a></li>
+                    <li class="breadcrumb-item active" aria-current="page">Активные сессии</li>
+                </ol>
+            </nav>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="fas fa-users"></i>
+                        Активные сессии ({{ sessions|length }})
+                    </h5>
+                </div>
+                <div class="card-body p-0">
+                    {% if sessions %}
+                    <div class="table-responsive">
+                        <table class="table table-striped mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Пользователь</th>
+                                    <th>Внешний IP</th>
+                                    <th>Внутренний IP</th>
+                                    <th>Маршрутизатор</th>
+                                    <th>Время входа</th>
+                                    <th>Длительность</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for session in sessions %}
+                                <tr>
+                                    <td>
+                                        <a href="{{ url_for('vpn.user_detail', username=session.username) }}" class="text-decoration-none">
+                                            <strong>{{ session.username }}</strong>
+                                        </a>
+                                    </td>
+                                    <td>{{ session.remote_address or '-' }}</td>
+                                    <td>{{ session.inner_ip or '-' }}</td>
+                                    <td>{{ session.device_name or '-' }}</td>
+                                    <td>
+                                        {% if session.login_time %}
+                                            {{ session.login_time.strftime('%d.%m.%Y %H:%M:%S') }}
+                                        {% else %}
+                                            -
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <span class="badge bg-success">{{ session.duration }}</span>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <div class="text-center py-4">
+                        <i class="fas fa-users fa-3x text-muted mb-3"></i>
+                        <p class="text-muted">Нет активных сессий</p>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

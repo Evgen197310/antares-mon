@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+
+{% block title %}Статистика пользователей VPN{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <h1 class="mb-2">
+                <i class="fas fa-chart-bar text-secondary"></i>
+                Статистика пользователей VPN
+            </h1>
+            <nav aria-label="breadcrumb" class="mb-4">
+                <ol class="breadcrumb">
+                    <li class="breadcrumb-item"><a href="{{ url_for('main.index') }}">Главная</a></li>
+                    <li class="breadcrumb-item"><a href="{{ url_for('vpn.index') }}">VPN</a></li>
+                    <li class="breadcrumb-item active" aria-current="page">Статистика пользователей</li>
+                </ol>
+            </nav>
+        </div>
+    </div>
+
+    <!-- Выбор периода -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="fas fa-calendar"></i>
+                        Период анализа
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="btn-group" role="group">
+                        <a href="{{ url_for('vpn.user_stats', days=7) }}" 
+                           class="btn {{ 'btn-primary' if days == 7 else 'btn-outline-primary' }}">
+                            7 дней
+                        </a>
+                        <a href="{{ url_for('vpn.user_stats', days=30) }}" 
+                           class="btn {{ 'btn-primary' if days == 30 else 'btn-outline-primary' }}">
+                            30 дней
+                        </a>
+                        <a href="{{ url_for('vpn.user_stats', days=90) }}" 
+                           class="btn {{ 'btn-primary' if days == 90 else 'btn-outline-primary' }}">
+                            90 дней
+                        </a>
+                        <a href="{{ url_for('vpn.user_stats', days=365) }}" 
+                           class="btn {{ 'btn-primary' if days == 365 else 'btn-outline-primary' }}">
+                            1 год
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Статистика -->
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="fas fa-users"></i>
+                        Статистика за {{ days }} дней ({{ users|length }} пользователей)
+                    </h5>
+                </div>
+                <div class="card-body p-0">
+                    {% if users %}
+                    <div class="table-responsive">
+                        <table class="table table-striped mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Пользователь</th>
+                                    <th>Всего подключений</th>
+                                    <th>Средняя длительность</th>
+                                    <th>Максимальная длительность</th>
+                                    <th>Последнее подключение</th>
+                                    <th>В среднем в день</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for user in users %}
+                                <tr>
+                                    <td>
+                                        <a href="{{ url_for('vpn.user_detail', username=user.username) }}" class="text-decoration-none">
+                                            <strong>{{ user.username }}</strong>
+                                        </a>
+                                    </td>
+                                    <td>
+                                        <span class="badge bg-primary">{{ user.total_sessions }}</span>
+                                    </td>
+                                    <td>{{ user.avg_duration }}</td>
+                                    <td>{{ user.max_duration }}</td>
+                                    <td>
+                                        {% if user.last_login %}
+                                            {{ user.last_login.strftime('%d.%m.%Y %H:%M') if user.last_login is not string else user.last_login }}
+                                        {% else %}
+                                            -
+                                        {% endif %}
+                                    </td>
+                                    <td>{{ user.avg_per_day }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <div class="text-center py-4">
+                        <i class="fas fa-chart-bar fa-3x text-muted mb-3"></i>
+                        <p class="text-muted">Нет данных за выбранный период</p>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

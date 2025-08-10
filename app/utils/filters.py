@@ -112,17 +112,19 @@ def time_ago(value):
     return f"{days} дн. назад"
 
 def duration_format(seconds):
-    """Форматирует длительность в секундах в компактный вид: 1ч 23м 45с"""
+    """Форматирует длительность в секундах в компактный вид: 1д 2ч 3м 4с"""
     if seconds is None or seconds == '':
         return '-'
     try:
         seconds = int(seconds)
     except Exception:
         return str(seconds)
-    h = seconds // 3600
-    m = (seconds % 3600) // 60
-    s = seconds % 60
+    d, rem = divmod(seconds, 86400)
+    h, rem = divmod(rem, 3600)
+    m, s = divmod(rem, 60)
     parts = []
+    if d:
+        parts.append(f"{d}д")
     if h:
         parts.append(f"{h}ч")
     if m:

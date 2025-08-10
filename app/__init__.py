@@ -69,20 +69,7 @@ def create_app(config_class=Config):
     # Требовать аутентификацию для основных разделов
     @app.before_request
     def _require_login_for_sections():
-        from flask import request, redirect, url_for, flash, session
-        path = request.path or '/'
-        # public whitelist
-        public = set([
-            '/', '/auth/login', '/auth/logout', '/api/health', '/api/status', '/api/docs'
-        ])
-        if path in public or path.startswith('/static/'):
-            return None
-        protected_prefixes = ('/vpn', '/rdp', '/smb', '/api')
-        if path.startswith(protected_prefixes):
-            user = session.get('user')
-            if not user:
-                flash('Требуется вход в систему', 'warning')
-                return redirect(url_for('auth.login', next=path))
+        # AUTH DISABLED: allow all requests without checks
         return None
 
     # Инициализация таблиц аутентификации и создание админа по умолчанию

@@ -53,6 +53,41 @@ def read_mikrotik_map():
         current_app.logger.error(f"Error reading MikroTik map: {e}")
         return []
 
+def _build_mikrotik_networks():
+    """Строит список (identity, ip_network) из карты MikroTik."""
+    nets = []
+    try:
+        rows = read_mikrotik_map()
+        for r in rows:
+            cidr = (r.get('ip') or '').strip()
+            identity = (r.get('identity') or '').strip()
+            if not cidr or '/' not in cidr or not identity:
+                continue
+            try:
+                net = ipaddress.ip_network(cidr, strict=False)
+            except Exception:
+                continue
+            nets.append((identity, net))
+    except Exception:
+        pass
+    return nets
+
+def _resolve_router_by_inner_ip(inner_ip: str):
+    """Возвращает identity MikroTik по внутреннему IP подключения."""
+    if not inner_ip:
+        return ''
+    try:
+        ip_obj = ipaddress.ip_address(inner_ip)
+    except Exception:
+        return ''
+    for identity, net in _build_mikrotik_networks():
+        try:
+            if ip_obj in net:
+                return identity
+        except Exception:
+            continue
+    return ''
+
 def _parse_login_time(ts: str):
     """Парсим строку времени в datetime, совместимо с Python 3.6.
     Поддерживаем варианты: 'YYYY-MM-DDTHH:MM:SS.%f', 'YYYY-MM-DDTHH:MM:SS',
@@ -186,12 +221,36 @@ def index():
                 week_stats = cursor.fetchone()
 
         # Дополнительные метрики для карточек
-        mikrotik_devices = len(read_mikrotik_map())
+        mikrotik_map = read_mikrotik_map()
+        # Считаем уникальные устройства по identity (как в топологии)
+        unique_devices = len(set(row['identity'] for row in mikrotik_map if row.get('identity')))
+        
+        # Расчёт средней длительности активных сессий
+        avg_duration = '0м'
+        if sessions:
+            total_minutes = 0
+            valid_sessions = 0
+            for s in sessions:
+                if s.get('login_time'):
+                    delta = datetime.now() - s['login_time']
+                    minutes = int(delta.total_seconds() / 60)
+                    if minutes >= 0:
+                        total_minutes += minutes
+                        valid_sessions += 1
+            if valid_sessions > 0:
+                avg_min = total_minutes // valid_sessions
+                hours = avg_min // 60
+                mins = avg_min % 60
+                if hours > 0:
+                    avg_duration = f"{hours} ч {mins} м"
+                else:
+                    avg_duration = f"{mins} м"
+        
         stats = {
             'active_sessions': len(sessions),
             'today_sessions': (today_stats or {}).get('today_sessions', 0) if isinstance(today_stats, dict) else (today_stats['today_sessions'] if today_stats else 0),
-            'mikrotik_devices': mikrotik_devices,
-            'avg_duration': '0m',  # при необходимости вычислим позже
+            'mikrotik_devices': unique_devices,
+            'avg_duration': avg_duration,
         }
 
         return render_template('vpn/index.html',
@@ -274,7 +333,12 @@ def history():
                 
                 # Получаем записи для текущей страницы
                 cursor.execute(f"""
-                    SELECT username, outer_ip, inner_ip, time_start, time_end, duration
+                    SELECT username,
+                           outer_ip,
+                           inner_ip,
+                           time_start,
+                           time_end,
+                           TIMESTAMPDIFF(SECOND, time_start, COALESCE(time_end, NOW())) AS duration_seconds
                     FROM session_history 
                     WHERE {where_clause}
                     ORDER BY time_start DESC
@@ -282,6 +346,10 @@ def history():
                 """, params + [per_page, offset])
                 
                 sessions = cursor.fetchall()
+                # enrich with router identity by inner_ip
+                for it in sessions:
+                    if not it.get('device_name'):
+                        it['device_name'] = _resolve_router_by_inner_ip(it.get('inner_ip')) or '-'
                 
                 # Пагинация
                 has_prev = page > 1
@@ -520,40 +588,46 @@ def stats():
                 active_sessions = cursor.fetchone()['active']
                 
                 # Статистика по дням за последние 30 дней
-                cursor.execute("""
-                    SELECT DATE(time_start) as date, 
-                           COUNT(*) as sessions,
-                           COUNT(DISTINCT username) as users
-                    FROM session_history 
+                cursor.execute(
+                    """
+                    SELECT DATE(time_start) AS date,
+                           COUNT(*) AS sessions,
+                           COUNT(DISTINCT username) AS users
+                    FROM session_history
                     WHERE time_start >= DATE_SUB(NOW(), INTERVAL 30 DAY)
                     GROUP BY DATE(time_start)
                     ORDER BY date DESC
-                """)
+                    """
+                )
                 daily_stats = cursor.fetchall()
                 
                 # Топ пользователи за последние 30 дней
-                cursor.execute("""
-                    SELECT username, 
-                           COUNT(*) as sessions,
-                           AVG(duration) as avg_duration,
-                           SUM(duration) as total_duration
-                    FROM session_history 
+                cursor.execute(
+                    """
+                    SELECT username,
+                           COUNT(*) AS sessions,
+                           AVG(TIMESTAMPDIFF(SECOND, time_start, COALESCE(time_end, NOW()))) AS avg_duration,
+                           SUM(TIMESTAMPDIFF(SECOND, time_start, COALESCE(time_end, NOW()))) AS total_duration
+                    FROM session_history
                     WHERE time_start >= DATE_SUB(NOW(), INTERVAL 30 DAY)
                     GROUP BY username
                     ORDER BY sessions DESC
                     LIMIT 20
-                """)
+                    """
+                )
                 top_users = cursor.fetchall()
                 
-                # Статистика по часам
-                cursor.execute("""
-                    SELECT HOUR(time_start) as hour,
-                           COUNT(*) as sessions
-                    FROM session_history 
+                # Статистика по часам за последнюю неделю
+                cursor.execute(
+                    """
+                    SELECT HOUR(time_start) AS hour,
+                           COUNT(*) AS sessions
+                    FROM session_history
                     WHERE time_start >= DATE_SUB(NOW(), INTERVAL 7 DAY)
                     GROUP BY HOUR(time_start)
                     ORDER BY hour
-                """)
+                    """
+                )
                 hourly_stats = cursor.fetchall()
                 
                 return render_template('vpn/stats.html',
@@ -563,38 +637,36 @@ def stats():
                                      hourly_stats=hourly_stats)
     except Exception as e:
         current_app.logger.error(f"VPN stats error: {e}")
-        return render_template('vpn/stats.html', 
+        return render_template('vpn/stats.html',
                              active_sessions=0,
                              daily_stats=[],
                              top_users=[],
                              hourly_stats=[])
 
-# API endpoints для VPN
 @bp.route('/api/sessions')
 def api_sessions():
     """API: Получить активные VPN сессии"""
     try:
         with db_manager.get_connection('vpn') as conn:
             with conn.cursor() as cursor:
-                cursor.execute("""
-                    SELECT username, outer_ip, inner_ip, time_start,
-                           TIMESTAMPDIFF(SECOND, time_start, NOW()) as duration_seconds
-                    FROM session_history 
-                    WHERE time_end IS NULL 
+                cursor.execute(
+                    """
+                    SELECT username,
+                           outer_ip,
+                           inner_ip,
+                           time_start,
+                           TIMESTAMPDIFF(SECOND, time_start, NOW()) AS duration_seconds
+                    FROM session_history
+                    WHERE time_end IS NULL
                     ORDER BY time_start DESC
-                """)
-                sessions = cursor.fetchall()
-                
+                    """
+                )
+                sessions = cursor.fetchall() or []
                 # Преобразуем datetime в строки для JSON
                 for session in sessions:
-                    if session.get('time_start'):
+                    if session.get('time_start') and hasattr(session['time_start'], 'isoformat'):
                         session['time_start'] = session['time_start'].isoformat()
-                
-                return jsonify({
-                    "status": "success",
-                    "count": len(sessions),
-                    "data": sessions
-                })
+                return jsonify({"status": "success", "count": len(sessions), "data": sessions})
     except Exception as e:
         current_app.logger.error(f"VPN API sessions error: {e}")
         return jsonify({"status": "error", "message": str(e)}), 500
@@ -650,3 +722,141 @@ def admin_doc():
     except Exception as e:
         current_app.logger.error(f"VPN admin doc error: {e}")
         return "Документация недоступна", 404
+
+
+@bp.route('/active-sessions')
+def active_sessions():
+    """Страница активных сессий с полной информацией"""
+    try:
+        raw_sessions = read_active_vpn_sessions()
+        sessions = []
+        for s in raw_sessions:
+            ts = s.get('time_start')
+            login_dt = _parse_login_time(ts)
+            # попытка определить маршрутизатор по внутреннему IP, если отсутствует
+            device_name = s.get('router') or ''
+            if not device_name:
+                device_name = _resolve_router_by_inner_ip(s.get('inner_ip') or '')
+            sessions.append({
+                'username': s.get('username') or '',
+                'remote_address': s.get('outer_ip') or '',
+                'inner_ip': s.get('inner_ip') or '',
+                'device_name': device_name or '-',
+                'login_time': login_dt,
+                'login_iso': login_dt.isoformat() if login_dt else '',
+                'duration': _format_duration_from(login_dt),
+            })
+        return render_template('vpn/active_sessions.html', sessions=sessions)
+    except Exception as e:
+        current_app.logger.error(f"VPN active sessions error: {e}")
+        return render_template('vpn/active_sessions.html', sessions=[])
+
+
+@bp.route('/today-sessions')
+def today_sessions():
+    """Страница сессий за сегодня с полной информацией"""
+    try:
+        with db_manager.get_connection('vpn') as conn:
+            with conn.cursor() as cursor:
+                cursor.execute("""
+                    SELECT username,
+                           outer_ip AS remote_address,
+                           inner_ip,
+                           NULL AS device_name,
+                           time_start,
+                           time_end,
+                           TIMESTAMPDIFF(SECOND, time_start, COALESCE(time_end, NOW())) AS duration_seconds
+                    FROM session_history 
+                    WHERE DATE(time_start) = CURDATE()
+                    ORDER BY time_start DESC
+                """)
+                sessions = cursor.fetchall()
+                # обогащаем маршрутизатором по внутреннему IP
+                for it in sessions:
+                    if not it.get('device_name'):
+                        it['device_name'] = _resolve_router_by_inner_ip(it.get('inner_ip')) or '-'
+        return render_template('vpn/today_sessions.html', sessions=sessions)
+    except Exception as e:
+        current_app.logger.error(f"VPN today sessions error: {e}")
+        return render_template('vpn/today_sessions.html', sessions=[])
+
+
+@bp.route('/devices')
+def devices():
+    """Страница устройств MikroTik с адресами интерфейсов"""
+    try:
+        mikrotik_map = read_mikrotik_map()
+        # Группируем по устройствам
+        devices = {}
+        for row in mikrotik_map:
+            identity = row.get('identity', '')
+            if not identity:
+                continue
+            if identity not in devices:
+                devices[identity] = {
+                    'identity': identity,
+                    'interfaces': [],
+                    'total_addresses': 0
+                }
+            devices[identity]['interfaces'].append({
+                'ip': row.get('ip', ''),
+                'iface': row.get('iface', ''),
+                'type': row.get('type', '')
+            })
+            devices[identity]['total_addresses'] += 1
+        
+        devices_list = list(devices.values())
+        return render_template('vpn/devices.html', devices=devices_list)
+    except Exception as e:
+        current_app.logger.error(f"VPN devices error: {e}")
+        return render_template('vpn/devices.html', devices=[])
+
+
+@bp.route('/user-stats')
+def user_stats():
+    """Страница статистики пользователей с выбором периода"""
+    try:
+        days = request.args.get('days', 30, type=int)
+        if days not in [7, 30, 90, 365]:
+            days = 30
+        
+        with db_manager.get_connection('vpn') as conn:
+            with conn.cursor() as cursor:
+                cursor.execute("""
+                    SELECT username,
+                           COUNT(*) as total_sessions,
+                           AVG(TIMESTAMPDIFF(SECOND, time_start, COALESCE(time_end, NOW()))) as avg_duration_sec,
+                           MAX(TIMESTAMPDIFF(SECOND, time_start, COALESCE(time_end, NOW()))) as max_duration_sec,
+                           MAX(time_start) as last_login,
+                           COUNT(*) / %s as avg_per_day
+                    FROM session_history 
+                    WHERE time_start >= DATE_SUB(NOW(), INTERVAL %s DAY)
+                    GROUP BY username
+                    ORDER BY total_sessions DESC
+                """, (days, days))
+                users = cursor.fetchall()
+        
+        # Форматируем длительности
+        for user in users:
+            if user.get('avg_duration_sec'):
+                avg_sec = int(user['avg_duration_sec'])
+                avg_h = avg_sec // 3600
+                avg_m = (avg_sec % 3600) // 60
+                user['avg_duration'] = f"{avg_h}ч {avg_m}м" if avg_h > 0 else f"{avg_m}м"
+            else:
+                user['avg_duration'] = '0м'
+            
+            if user.get('max_duration_sec'):
+                max_sec = int(user['max_duration_sec'])
+                max_h = max_sec // 3600
+                max_m = (max_sec % 3600) // 60
+                user['max_duration'] = f"{max_h}ч {max_m}м" if max_h > 0 else f"{max_m}м"
+            else:
+                user['max_duration'] = '0м'
+            
+            user['avg_per_day'] = round(user.get('avg_per_day', 0), 1)
+        
+        return render_template('vpn/user_stats.html', users=users, days=days)
+    except Exception as e:
+        current_app.logger.error(f"VPN user stats error: {e}")
+        return render_template('vpn/user_stats.html', users=[], days=30)

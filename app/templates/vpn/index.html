@@ -60,52 +60,60 @@
     <!-- Статистика -->
     <div class="row mb-4">
         <div class="col-md-3">
-            <div class="card text-white bg-success">
-                <div class="card-header">
-                    <i class="fas fa-users"></i>
-                    Активные сессии
+            <a href="{{ url_for('vpn.active_sessions') }}" class="text-decoration-none">
+                <div class="card text-white bg-success">
+                    <div class="card-header">
+                        <i class="fas fa-users"></i>
+                        Активные сессии
+                    </div>
+                    <div class="card-body">
+                        <h3>{{ stats.active_sessions if stats else 0 }}</h3>
+                        <p class="card-text">Подключено сейчас</p>
+                    </div>
                 </div>
-                <div class="card-body">
-                    <h3>{{ stats.active_sessions if stats else 0 }}</h3>
-                    <p class="card-text">Подключено сейчас</p>
-                </div>
-            </div>
+            </a>
         </div>
         <div class="col-md-3">
-            <div class="card text-white bg-info">
-                <div class="card-header">
-                    <i class="fas fa-history"></i>
-                    Всего за сегодня
+            <a href="{{ url_for('vpn.today_sessions') }}" class="text-decoration-none">
+                <div class="card text-white bg-info">
+                    <div class="card-header">
+                        <i class="fas fa-history"></i>
+                        Всего за сегодня
+                    </div>
+                    <div class="card-body">
+                        <h3>{{ stats.today_sessions if stats else 0 }}</h3>
+                        <p class="card-text">Сессий сегодня</p>
+                    </div>
                 </div>
-                <div class="card-body">
-                    <h3>{{ stats.today_sessions if stats else 0 }}</h3>
-                    <p class="card-text">Сессий сегодня</p>
-                </div>
-            </div>
+            </a>
         </div>
         <div class="col-md-3">
-            <div class="card text-white bg-warning">
-                <div class="card-header">
-                    <i class="fas fa-server"></i>
-                    MikroTik устройств
+            <a href="{{ url_for('vpn.devices') }}" class="text-decoration-none">
+                <div class="card text-white bg-warning">
+                    <div class="card-header">
+                        <i class="fas fa-server"></i>
+                        MikroTik устройств
+                    </div>
+                    <div class="card-body">
+                        <h3>{{ stats.mikrotik_devices if stats else 0 }}</h3>
+                        <p class="card-text">В топологии</p>
+                    </div>
                 </div>
-                <div class="card-body">
-                    <h3>{{ stats.mikrotik_devices if stats else 0 }}</h3>
-                    <p class="card-text">В топологии</p>
-                </div>
-            </div>
+            </a>
         </div>
         <div class="col-md-3">
-            <div class="card text-white bg-secondary">
-                <div class="card-header">
-                    <i class="fas fa-clock"></i>
-                    Средняя длительность
+            <a href="{{ url_for('vpn.user_stats') }}" class="text-decoration-none">
+                <div class="card text-white bg-secondary">
+                    <div class="card-header">
+                        <i class="fas fa-clock"></i>
+                        Средняя длительность
+                    </div>
+                    <div class="card-body">
+                        <h3>{{ stats.avg_duration if stats else '0м' }}</h3>
+                        <p class="card-text">Время сессии</p>
+                    </div>
                 </div>
-                <div class="card-body">
-                    <h3>{{ stats.avg_duration if stats else '0m' }}</h3>
-                    <p class="card-text">Время сессии</p>
-                </div>
-            </div>
+            </a>
         </div>
     </div>
 
