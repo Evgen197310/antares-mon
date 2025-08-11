@@ -192,7 +192,7 @@
             </div>
             <div class="card-body">
                 <ul class="list-unstyled mb-0">
-                    <li><strong>Версия:</strong> 2.0.0</li>
+                    <li><strong>Версия:</strong> <span id="version">Загрузка...</span></li>
                     <li><strong>Время работы:</strong> <span id="uptime">Загрузка...</span></li>
                     <li><strong>Последнее обновление:</strong> <span id="last-update">Загрузка...</span></li>
                 </ul>
@@ -238,9 +238,10 @@ function loadSystemStatus() {
             
             statusDiv.innerHTML = html;
 
-            // Обновляем uptime и last-update
+            // Обновляем версию, uptime и last-update
             const uptimeSpan = document.getElementById('uptime');
             const lastSpan = document.getElementById('last-update');
+            const versionSpan = document.getElementById('version');
             if ('uptime_seconds' in data && uptimeSpan) {
                 const s = data.uptime_seconds || 0;
                 const h = Math.floor(s / 3600);
@@ -251,6 +252,9 @@ function loadSystemStatus() {
             if ('last_update' in data && lastSpan) {
                 const d = new Date(data.last_update);
                 lastSpan.textContent = d.toLocaleString('ru-RU');
+            }
+            if ('version' in data && versionSpan) {
+                versionSpan.textContent = data.version || 'unknown';
             }
         })
         .catch(error => {

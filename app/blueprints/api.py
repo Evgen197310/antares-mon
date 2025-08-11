@@ -2,17 +2,65 @@ from flask import Blueprint, jsonify, request, current_app
 from app.models.database import db_manager
 from datetime import datetime, timedelta
 import logging
+import os
+import subprocess
+
+def _repo_root() -> str:
+    return os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+
+def _get_version_info():
+    """Возвращает (version, last_update_iso).
+    Пытается прочитать VERSION; если нет — берёт из git.
+    last_update — время последнего коммита (git), либо mtime корня проекта.
+    """
+    root = _repo_root()
+    version = None
+    version_path = os.path.join(root, 'VERSION')
+    if os.path.isfile(version_path):
+        try:
+            with open(version_path, 'r', encoding='utf-8') as f:
+                version = f.read().strip()
+        except Exception:
+            version = None
+    if not version:
+        try:
+            res = subprocess.run(['git', '-C', root, 'describe', '--tags', '--always'],
+                                 stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=2)
+            v = res.stdout.decode('utf-8', 'ignore').strip()
+            version = v or None
+        except Exception:
+            version = None
+    if not version:
+        version = 'unknown'
+
+    last_update = None
+    try:
+        res = subprocess.run(['git', '-C', root, 'log', '-1', '--format=%cI'],
+                             stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=2)
+        ts = res.stdout.decode('utf-8', 'ignore').strip()
+        last_update = ts or None
+    except Exception:
+        last_update = None
+    if not last_update:
+        try:
+            mtime = os.path.getmtime(root)
+            last_update = datetime.fromtimestamp(mtime).isoformat()
+        except Exception:
+            last_update = datetime.now().isoformat()
+    return version, last_update
 
 bp = Blueprint('api', __name__)
 
 @bp.route('/')
 def index():
     """API информация"""
+    version, last_update = _get_version_info()
     return jsonify({
         "name": "Monitoring API",
-        "version": "2.0.0",
+        "version": version,
         "status": "active",
         "description": "Unified Network Monitoring API",
+        "last_update": last_update,
         "endpoints": {
             "vpn": {
                 "/api/vpn/sessions": "Активные VPN сессии",
@@ -36,13 +84,15 @@ def index():
 @bp.route('/docs')
 def docs():
     """API документация"""
+    version, last_update = _get_version_info()
     return jsonify({
         "title": "Monitoring API Documentation",
-        "version": "2.0.0",
+        "version": version,
         "description": "REST API для системы мониторинга сетевой инфраструктуры",
         "base_url": "/api",
         "authentication": "None required",
         "response_format": "JSON",
+        "last_update": last_update,
         "endpoints": {
             "GET /api/": "Информация об API",
             "GET /api/docs": "Документация API",
@@ -460,12 +510,21 @@ def health():
                 db_status[db_type] = f"error: {str(e)}"
         
         overall_status = "healthy" if all(status == "healthy" for status in db_status.values()) else "degraded"
+        # Версия, последнее обновление и аптайм
+        version, last_update = _get_version_info()
+        started_at = current_app.config.get('STARTED_AT')
+        try:
+            uptime_seconds = int((datetime.now() - started_at).total_seconds()) if started_at else 0
+        except Exception:
+            uptime_seconds = 0
         
         return jsonify({
             "status": overall_status,
             "timestamp": datetime.now().isoformat(),
             "databases": db_status,
-            "version": "2.0.0"
+            "version": version,
+            "last_update": last_update,
+            "uptime_seconds": uptime_seconds
         })
     except Exception as e:
         return jsonify({
