@@ -7,7 +7,7 @@ PART="${1:-patch}" # patch|minor|major
 TAG="${TAG:-true}" # TAG=false чтобы не создавать git tag
 
 if [[ ! -f "$FILE" ]]; then
-  echo "2.0" > "$FILE"
+  echo "2.0.0" > "$FILE"
 fi
 
 VER="$(tr -d ' \n\r' < "$FILE")"
@@ -28,9 +28,7 @@ case "$PART" in
   *) echo "Использование: $0 [major|minor|patch]"; exit 1;;
 esac
 
-NEW="$MAJ.$MIN"
-# Если хотите хранить патч-версию, раскомментируйте следующую строку:
-# NEW="$MAJ.$MIN.$PAT"
+NEW="$MAJ.$MIN.$PAT"
 
 echo "$NEW" > "$FILE"
 # mtime файла VERSION = время релиза

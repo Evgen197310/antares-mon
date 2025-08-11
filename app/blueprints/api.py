@@ -36,6 +36,13 @@ def _get_version_info():
 
     if not version:
         version = 'unknown'
+    else:
+        # Нормализуем формат в X.Y.Z (если указан X.Y, добавим .0)
+        import re
+        m = re.match(r'^(\d+)\.(\d+)(?:\.(\d+))?$', version)
+        if m:
+            maj, mino, pat = m.group(1), m.group(2), m.group(3) if m.group(3) is not None else '0'
+            version = f"{maj}.{mino}.{pat}"
 
     if not last_update:
         # Ищем максимальный mtime по основным директориям проекта
