@@ -152,30 +152,41 @@
                     </h5>
                     <!-- Пагинация -->
                     {% if total_pages > 1 %}
-                    <nav>
-                        <ul class="pagination pagination-sm mb-0">
-                            {% if page > 1 %}
-                            <li class="page-item">
-                                <a class="page-link" href="{{ url_for('rdp.user_history', username=username, 
-                                    page=page-1, date_from=date_from, date_to=date_to, host_filter=host_filter) }}">
-                                    <i class="fas fa-chevron-left"></i>
-                                </a>
-                            </li>
-                            {% endif %}
-                            
-                            <li class="page-item active">
-                                <span class="page-link">{{ page }} из {{ total_pages }}</span>
-                            </li>
-                            
-                            {% if page < total_pages %}
-                            <li class="page-item">
-                                <a class="page-link" href="{{ url_for('rdp.user_history', username=username,
-                                    page=page+1, date_from=date_from, date_to=date_to, host_filter=host_filter) }}">
-                                    <i class="fas fa-chevron-right"></i>
-                                </a>
-                            </li>
-                            {% endif %}
-                        </ul>
+                    <nav aria-label="Страницы истории">
+                      <ul class="pagination pagination-sm mb-0">
+                        <!-- First -->
+                        <li class="page-item {% if not has_prev %}disabled{% endif %}">
+                          <a class="page-link" href="{{ url_for('rdp.user_history', username=username, page=1, date_from=date_from, date_to=date_to, host_filter=host_filter) }}" aria-label="Первая">
+                            <span aria-hidden="true">«</span>
+                          </a>
+                        </li>
+                        <!-- Prev -->
+                        <li class="page-item {% if not has_prev %}disabled{% endif %}">
+                          <a class="page-link" href="{{ url_for('rdp.user_history', username=username, page=page-1, date_from=date_from, date_to=date_to, host_filter=host_filter) }}" aria-label="Предыдущая">
+                            <span aria-hidden="true">‹</span>
+                          </a>
+                        </li>
+                        
+                        <!-- Numbers window -->
+                        {% for p in page_numbers %}
+                          <li class="page-item {% if p == page %}active{% endif %}">
+                            <a class="page-link" href="{{ url_for('rdp.user_history', username=username, page=p, date_from=date_from, date_to=date_to, host_filter=host_filter) }}">{{ p }}</a>
+                          </li>
+                        {% endfor %}
+                        
+                        <!-- Next -->
+                        <li class="page-item {% if not has_next %}disabled{% endif %}">
+                          <a class="page-link" href="{{ url_for('rdp.user_history', username=username, page=page+1, date_from=date_from, date_to=date_to, host_filter=host_filter) }}" aria-label="Следующая">
+                            <span aria-hidden="true">›</span>
+                          </a>
+                        </li>
+                        <!-- Last -->
+                        <li class="page-item {% if not has_next %}disabled{% endif %}">
+                          <a class="page-link" href="{{ url_for('rdp.user_history', username=username, page=total_pages, date_from=date_from, date_to=date_to, host_filter=host_filter) }}" aria-label="Последняя">
+                            <span aria-hidden="true">»</span>
+                          </a>
+                        </li>
+                      </ul>
                     </nav>
                     {% endif %}
                 </div>

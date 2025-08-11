@@ -134,16 +134,23 @@ def user_history(username):
         date_to_arg = request.args.get('date_to')
         host_filter = request.args.get('host_filter', '', type=str)
 
-        # Значения по умолчанию: последние 30 дней
-        dt_now = datetime.now()
-        date_from = datetime.strptime(date_from_arg, '%Y-%m-%d') if date_from_arg else (dt_now - timedelta(days=30))
-        date_to = datetime.strptime(date_to_arg, '%Y-%m-%d') if date_to_arg else dt_now
+        # Без ограничения по датам по умолчанию (берём всю историю)
+        date_from = datetime.strptime(date_from_arg, '%Y-%m-%d') if date_from_arg else None
+        date_to_input = datetime.strptime(date_to_arg, '%Y-%m-%d') if date_to_arg else None
+        # Для верхней границы используем полуинтервал: login_time < date_to + 1 день
+        date_to_exclusive = (date_to_input + timedelta(days=1)) if date_to_input else None
 
         with db_manager.get_connection('rdp') as conn:
             with conn.cursor() as cursor:
                 # Динамические условия
-                where = ["username = %s", "login_time >= %s", "login_time <= %s"]
-                params = [username, date_from, date_to]
+                where = ["username = %s"]
+                params = [username]
+                if date_from:
+                    where.append("login_time >= %s")
+                    params.append(date_from)
+                if date_to_exclusive:
+                    where.append("login_time < %s")
+                    params.append(date_to_exclusive)
                 if host_filter:
                     where.append("remote_host LIKE %s")
                     params.append(f"%{host_filter}%")
@@ -183,7 +190,13 @@ def user_history(username):
                 user_stats = cursor.fetchone() or {}
 
                 # Пагинация (количество страниц)
-                total_pages = (total + per_page - 1) // per_page
+                total_pages = max(1, (total + per_page - 1) // per_page)
+                # Окно отображаемых страниц (по 3 слева/справа)
+                start_page = max(1, page - 3)
+                end_page = min(total_pages, page + 3)
+                page_numbers = list(range(start_page, end_page + 1))
+                has_prev = page > 1
+                has_next = page < total_pages
 
                 return render_template(
                     'rdp/user_history.html',
@@ -191,12 +204,17 @@ def user_history(username):
                     sessions=sessions,
                     user_stats=user_stats,
                     # значения фильтров обратно в форму
-                    date_from=date_from.strftime('%Y-%m-%d'),
-                    date_to=date_to.strftime('%Y-%m-%d'),
+                    date_from=(date_from.strftime('%Y-%m-%d') if date_from else ''),
+                    date_to=(date_to_input.strftime('%Y-%m-%d') if date_to_input else ''),
                     host_filter=host_filter,
                     # пагинация
                     page=page,
-                    total_pages=total_pages
+                    total_pages=total_pages,
+                    page_size=per_page,
+                    total=total,
+                    page_numbers=page_numbers,
+                    has_prev=has_prev,
+                    has_next=has_next
                 )
     except Exception as e:
         current_app.logger.error(f"RDP user history error: {e}")
