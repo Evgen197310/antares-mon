@@ -100,26 +100,80 @@ def index():
 def sessions_history():
     """История RDP: сводка по пользователям (как в исходном проекте)."""
     try:
+        # Быстрый выбор периода: today, 7d, 30d, all
+        period = request.args.get('period', '30d')
+
+        where = []
+        params = []
+        date_from = None
+        date_to = None
+
+        if period == 'today':
+            where.append("login_time >= CURDATE()")
+            date_from = datetime.now().strftime('%Y-%m-%d')
+            date_to = datetime.now().strftime('%Y-%m-%d')
+        elif period == '7d':
+            where.append("login_time >= DATE_SUB(NOW(), INTERVAL 7 DAY)")
+            date_from = (datetime.now() - timedelta(days=7)).strftime('%Y-%m-%d')
+        elif period == '30d':
+            where.append("login_time >= DATE_SUB(NOW(), INTERVAL 30 DAY)")
+            date_from = (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d')
+        elif period == 'all':
+            # без ограничений
+            pass
+        else:
+            # неизвестное значение — используем 30 дней
+            where.append("login_time >= DATE_SUB(NOW(), INTERVAL 30 DAY)")
+            period = '30d'
+            date_from = (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d')
+
+        where_sql = ("WHERE " + " AND ".join(where)) if where else ""
+
         with db_manager.get_connection('rdp') as conn:
             with conn.cursor() as cursor:
                 cursor.execute(
-                    """
+                    f"""
                     SELECT 
-                        username,
-                        MAX(login_time)   AS last_login,
-                        MAX(logout_time)  AS last_logout,
-                        COUNT(*)          AS total_sessions
-                    FROM rdp_session_history
-                    GROUP BY username
-                    ORDER BY last_login DESC
-                    """
+                        uc.username,
+                        uc.collection_name,
+                        uc.last_login,
+                        uc.last_logout,
+                        uc.total_sessions,
+                        uc.total_duration_seconds,
+                        um.user_max_duration
+                    FROM (
+                        SELECT 
+                            username,
+                            COALESCE(collection_name, '—') AS collection_name,
+                            MAX(login_time)   AS last_login,
+                            MAX(logout_time)  AS last_logout,
+                            COUNT(*)          AS total_sessions,
+                            COALESCE(SUM(duration_seconds), 0) AS total_duration_seconds
+                        FROM rdp_session_history
+                        {where_sql}
+                        GROUP BY username, collection_name
+                    ) uc
+                    JOIN (
+                        SELECT username, MAX(col_total) AS user_max_duration
+                        FROM (
+                            SELECT username, COALESCE(collection_name, '—') AS collection_name,
+                                   COALESCE(SUM(duration_seconds), 0) AS col_total
+                            FROM rdp_session_history
+                            {where_sql}
+                            GROUP BY username, collection_name
+                        ) t
+                        GROUP BY username
+                    ) um ON um.username = uc.username
+                    ORDER BY um.user_max_duration DESC, uc.total_duration_seconds DESC, uc.username ASC
+                    """,
+                    params
                 )
                 users = cursor.fetchall()
 
-                return render_template('rdp/sessions_history.html', users=users)
+                return render_template('rdp/sessions_history.html', users=users, period=period, date_from=date_from, date_to=date_to)
     except Exception as e:
         current_app.logger.error(f"RDP sessions history error: {e}")
-        return render_template('rdp/sessions_history.html', users=[])
+        return render_template('rdp/sessions_history.html', users=[], period='30d')
 
 @bp.route('/user/<username>')
 def user_history(username):
