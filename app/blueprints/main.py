@@ -171,50 +171,16 @@ def health_check():
         except Exception as e:
             health['databases'][label] = f'error: {str(e)}'
             health['status'] = 'degraded'
-    # Версия, аптайм и корректное last_update (время последнего коммита)
+    # Версия, аптайм и корректное last_update (mtime файла VERSION)
     try:
         # uptime
         started = current_app.config.get('STARTED_AT')
         uptime_seconds = int((datetime.now() - started).total_seconds()) if started else 0
         health['uptime_seconds'] = uptime_seconds
 
-        # repo root
-        root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
-
-        # version: сначала файл VERSION, потом git describe
-        version = None
-        version_path = os.path.join(root, 'VERSION')
-        if os.path.isfile(version_path):
-            try:
-                with open(version_path, 'r', encoding='utf-8') as f:
-                    version = f.read().strip()
-            except Exception:
-                version = None
-        if not version:
-            try:
-                res = subprocess.run(['git', '-C', root, 'describe', '--tags', '--always'],
-                                     stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=2)
-                v = res.stdout.decode('utf-8', 'ignore').strip()
-                version = v or None
-            except Exception:
-                version = None
-        health['version'] = version or 'unknown'
-
-        # last_update: время последнего коммита, иначе mtime проекта
-        last_update = None
-        try:
-            res = subprocess.run(['git', '-C', root, 'log', '-1', '--format=%cI'],
-                                 stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=2)
-            ts = res.stdout.decode('utf-8', 'ignore').strip()
-            last_update = ts or None
-        except Exception:
-            last_update = None
-        if not last_update:
-            try:
-                mtime = os.path.getmtime(root)
-                last_update = datetime.fromtimestamp(mtime).isoformat()
-            except Exception:
-                last_update = datetime.now().isoformat()
+        # Версия и время последнего обновления из VERSION
+        version, last_update = _get_version_info()
+        health['version'] = version
         health['last_update'] = last_update
     except Exception:
         # Не роняем health, просто не добавляем версионную информацию

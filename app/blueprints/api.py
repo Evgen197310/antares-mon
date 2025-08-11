@@ -3,50 +3,69 @@ from app.models.database import db_manager
 from datetime import datetime, timedelta
 import logging
 import os
-import subprocess
 
 def _repo_root() -> str:
     return os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 
 def _get_version_info():
     """Возвращает (version, last_update_iso).
-    Пытается прочитать VERSION; если нет — берёт из git.
-    last_update — время последнего коммита (git), либо mtime корня проекта.
+    Источник истины — файл VERSION в корне проекта:
+      - version = содержимое VERSION (например, "2.1").
+      - last_update = mtime файла VERSION.
+    Фоллбэки (если VERSION отсутствует):
+      - version = 'unknown'
+      - last_update = максимальный mtime среди файлов кода/шаблонов; если не получилось — текущее время.
     """
     root = _repo_root()
-    version = None
     version_path = os.path.join(root, 'VERSION')
+
+    version = None
+    last_update = None
+
     if os.path.isfile(version_path):
         try:
             with open(version_path, 'r', encoding='utf-8') as f:
-                version = f.read().strip()
+                version = (f.read() or '').strip()
         except Exception:
             version = None
-    if not version:
         try:
-            res = subprocess.run(['git', '-C', root, 'describe', '--tags', '--always'],
-                                 stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=2)
-            v = res.stdout.decode('utf-8', 'ignore').strip()
-            version = v or None
+            mtime = os.path.getmtime(version_path)
+            last_update = datetime.fromtimestamp(mtime).isoformat()
         except Exception:
-            version = None
+            last_update = None
+
     if not version:
         version = 'unknown'
 
-    last_update = None
-    try:
-        res = subprocess.run(['git', '-C', root, 'log', '-1', '--format=%cI'],
-                             stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=2)
-        ts = res.stdout.decode('utf-8', 'ignore').strip()
-        last_update = ts or None
-    except Exception:
-        last_update = None
     if not last_update:
+        # Ищем максимальный mtime по основным директориям проекта
         try:
-            mtime = os.path.getmtime(root)
-            last_update = datetime.fromtimestamp(mtime).isoformat()
+            candidates = [
+                os.path.join(root, 'app'),
+                os.path.join(root, 'templates'),
+                os.path.join(root, 'static'),
+            ]
+            max_mtime = 0
+            for base in candidates:
+                if not os.path.isdir(base):
+                    continue
+                for dirpath, _dirnames, filenames in os.walk(base):
+                    for fn in filenames:
+                        p = os.path.join(dirpath, fn)
+                        try:
+                            mt = os.path.getmtime(p)
+                            if mt > max_mtime:
+                                max_mtime = mt
+                        except Exception:
+                            continue
+            if max_mtime > 0:
+                last_update = datetime.fromtimestamp(max_mtime).isoformat()
         except Exception:
-            last_update = datetime.now().isoformat()
+            last_update = None
+
+    if not last_update:
+        last_update = datetime.now().isoformat()
+
     return version, last_update
 
 bp = Blueprint('api', __name__)
