@@ -137,6 +137,34 @@
     </div>
 </div>
 
+<!-- MikroTik summary -->
+<div class="row mb-4">
+  <div class="col-md-12">
+    <div class="card border-info">
+      <div class="card-header bg-info text-white">
+        <h5 class="card-title mb-0"><i class="bi bi-hdd-network"></i> Устройства MikroTik</h5>
+      </div>
+      <div class="card-body position-relative">
+        <div class="row text-center">
+          <div class="col-6">
+            <div class="h3 mb-0">{{ stats.mt_devices }}</div>
+            <small class="text-muted">Устройств</small>
+          </div>
+          <div class="col-6">
+            <div class="h3 mb-0">{{ stats.mt_if_addrs }}</div>
+            <small class="text-muted">IP-адресов на интерфейсах</small>
+          </div>
+        </div>
+        <div class="mt-3">
+          <a href="{{ url_for('vpn.interfaces') }}" class="btn btn-info btn-sm"><i class="bi bi-list-columns-reverse"></i> Таблица адресов</a>
+        </div>
+        <a href="{{ url_for('vpn.interfaces') }}" class="stretched-link" aria-label="Открыть таблицу адресов MikroTik"></a>
+      </div>
+    </div>
+  </div>
+  
+</div>
+
 <!-- Быстрые действия -->
 <div class="row mb-4">
     <div class="col-12">

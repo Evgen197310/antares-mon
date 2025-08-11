@@ -19,7 +19,9 @@ def index():
         'rdp_active': 0,
         'rdp_total_today': 0,
         'smb_active': 0,
-        'smb_users_active': 0
+        'smb_users_active': 0,
+        'mt_devices': 0,
+        'mt_if_addrs': 0
     }
     # Списки для UI
     vpn_users = []            # [{username}]
@@ -57,6 +59,16 @@ def index():
         logger.error(f"Ошибка получения VPN статистики: {e}")
     
     try:
+        # MikroTik: карта устройств и адресов интерфейсов
+        try:
+            from app.blueprints.vpn import read_mikrotik_map
+            mt_rows = read_mikrotik_map() or []
+            stats['mt_if_addrs'] = len(mt_rows)
+            stats['mt_devices'] = len({r.get('identity') for r in mt_rows if r.get('identity')})
+        except Exception as e:
+            logger.error(f"Ошибка чтения карты MikroTik: {e}")
+
+        # RDP статистика
         # RDP статистика
         with db_manager.get_connection('rdp') as conn:
             with conn.cursor() as cur:
