@@ -15,6 +15,16 @@ def create_app(config_class=Config):
         app.config['SMB_SSH'] = cfg_instance.SMB_SSH
         # Прокидываем legacy-карту remote_host (используется в старом проекте)
         app.config['REMOTE_HOST'] = cfg_instance.REMOTE_HOST
+        # Прокидываем пути из config.json
+        try:
+            app.config['PATHS'] = cfg_instance.PATHS
+        except Exception:
+            pass
+        # Прокидываем секцию shares_f_map (путь к mikrotik_map из боевого конфига)
+        try:
+            app.config['SHARES_F_MAP'] = cfg_instance.config.get('shares_f_map', {})
+        except Exception:
+            pass
     except Exception:
         # Без критического падения, в логах будет видно отсутствие SSH настроек
         pass

@@ -12,14 +12,51 @@ def read_mikrotik_map():
     """Чтение карты MikroTik: возвращает список адресов на интерфейсах.
     Единица списка — адрес (ip/mask) на интерфейсе устройства.
     Поля: identity, ip, iface, type.
+    Источник файла ищется по нескольким кандидатам.
     """
     try:
-        map_file = current_app.config.get('MIKROTIK_MAP_FILE', '/opt/ike2web/data/full_map.csv')
-        if not os.path.exists(map_file):
+        # Кандидаты путей в порядке приоритета
+        paths = []
+        try:
+            # 1) Боевой конфиг shares_f_map.mikrotik_map
+            sfm = current_app.config.get('SHARES_F_MAP') or {}
+            v0 = sfm.get('mikrotik_map')
+            if v0:
+                paths.append(str(v0))
+        except Exception:
+            pass
+        try:
+            # 2) Конфиг путей из config.Config
+            p = current_app.config.get('PATHS') or {}
+            v2 = p.get('mikrotik_map')
+            if v2:
+                paths.append(str(v2))
+        except Exception:
+            pass
+        try:
+            # 3) Явный ключ окружения/конфига
+            v = current_app.config.get('MIKROTIK_MAP_FILE')
+            if v:
+                paths.append(str(v))
+        except Exception:
+            pass
+        # Стандартные локации (обе версии проекта)
+        paths.extend([
+            '/opt/monitoring-web/data/full_map.csv',
+            '/opt/ike2web/data/full_map.csv',
+        ])
+        map_file = next((p for p in paths if p and os.path.exists(p)), None)
+        if not map_file:
+            current_app.logger.error("MikroTik map file not found in: %s", paths)
             return []
 
         rows = []
         with open(map_file, 'r', encoding='utf-8') as f:
+            # Для диагностики: логируем выбранный путь один раз
+            try:
+                current_app.logger.debug(f"Using MikroTik map: {map_file}")
+            except Exception:
+                pass
             peek = f.readline()
             f.seek(0)
             lower = peek.lower()
@@ -50,7 +87,7 @@ def read_mikrotik_map():
                     rows.append({'identity': identity, 'ip': ip_show, 'iface': iface, 'type': rtype})
         return rows
     except Exception as e:
-        current_app.logger.error(f"Error reading MikroTik map: {e}")
+        current_app.logger.exception("Error reading MikroTik map")
         return []
 
 def _build_mikrotik_networks():
@@ -279,22 +316,31 @@ def interfaces():
     """Список адресов на интерфейсах MikroTik с агрегированными счетчиками."""
     try:
         rows = read_mikrotik_map()
+        try:
+            current_app.logger.info(f"MikroTik interfaces: loaded {len(rows)} rows")
+        except Exception:
+            pass
         selected_identity = request.args.get('identity', '').strip()
         if selected_identity:
             rows = [r for r in rows if (r.get('identity') or '').strip() == selected_identity]
+        try:
+            current_app.logger.info(f"MikroTik interfaces: after filter '{selected_identity}' -> {len(rows)} rows")
+        except Exception:
+            pass
         address_count = len(rows)
         device_count = len({r.get('identity') for r in rows if r.get('identity')})
         interface_count = len({(r.get('identity'), r.get('iface')) for r in rows if r.get('identity') and r.get('iface')})
-        # Группируем по устройству
-        groups_dict = {}
-        for r in rows:
-            name = (r.get('identity') or '').strip() or '-'
-            groups_dict.setdefault(name, []).append(r)
-        # Сортируем устройства и их интерфейсы
+        # Группируем по устройству (устойчиво к странным значениям)
         groups = []
-        for name in sorted(groups_dict.keys(), key=lambda x: x.lower()):
-            items = sorted(groups_dict[name], key=lambda t: (t.get('iface') or '', t.get('ip') or ''))
-            groups.append({'identity': name, 'items': items})
+        try:
+            names = {(r.get('identity') or '').strip() or '-' for r in rows}
+            for name in sorted(list(names), key=lambda x: x.lower()):
+                items = [t for t in rows if ((t.get('identity') or '').strip() or '-') == name]
+                items = sorted(items, key=lambda t: (t.get('iface') or '', t.get('ip') or ''))
+                groups.append({'identity': name, 'rows': items})
+        except Exception as ge:
+            current_app.logger.error(f"VPN interfaces grouping error: {ge}")
+            groups = []
 
         return render_template('vpn/interfaces.html',
                                groups=groups,
@@ -304,7 +350,7 @@ def interfaces():
                                interface_count=interface_count,
                                selected_identity=selected_identity)
     except Exception as e:
-        current_app.logger.error(f"VPN interfaces error: {e}")
+        current_app.logger.exception("VPN interfaces error")
         return render_template('vpn/interfaces.html', groups=[], routers=[], address_count=0, device_count=0, interface_count=0, selected_identity='')
 
 @bp.route('/history')
