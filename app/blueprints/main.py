@@ -2,6 +2,9 @@ from flask import Blueprint, render_template, current_app
 from app.models.database import db_manager
 import logging
 from datetime import datetime
+import os
+import subprocess
+from app.blueprints.api import _get_version_info
 
 logger = logging.getLogger(__name__)
 
@@ -132,10 +135,17 @@ def index():
     except Exception as e:
         logger.error(f"Ошибка получения SMB статистики: {e}")
     
+    # Версия приложения для немедленного отображения на странице
+    try:
+        app_version, _lv = _get_version_info()
+    except Exception:
+        app_version = 'unknown'
+
     return render_template('index.html', stats=stats,
-                           vpn_users=vpn_users,
-                           rdp_users=rdp_users,
-                           smb_files=smb_files)
+                            vpn_users=vpn_users,
+                            rdp_users=rdp_users,
+                            smb_files=smb_files,
+                            app_version=app_version)
 
 @bp.route('/health')
 def health_check():
@@ -161,15 +171,52 @@ def health_check():
         except Exception as e:
             health['databases'][label] = f'error: {str(e)}'
             health['status'] = 'degraded'
-    # Uptime и last_update
+    # Версия, аптайм и корректное last_update (время последнего коммита)
     try:
+        # uptime
         started = current_app.config.get('STARTED_AT')
-        if started:
-            uptime_seconds = int((datetime.now() - started).total_seconds())
-        else:
-            uptime_seconds = None
+        uptime_seconds = int((datetime.now() - started).total_seconds()) if started else 0
         health['uptime_seconds'] = uptime_seconds
-        health['last_update'] = datetime.now().isoformat()
+
+        # repo root
+        root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+
+        # version: сначала файл VERSION, потом git describe
+        version = None
+        version_path = os.path.join(root, 'VERSION')
+        if os.path.isfile(version_path):
+            try:
+                with open(version_path, 'r', encoding='utf-8') as f:
+                    version = f.read().strip()
+            except Exception:
+                version = None
+        if not version:
+            try:
+                res = subprocess.run(['git', '-C', root, 'describe', '--tags', '--always'],
+                                     stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=2)
+                v = res.stdout.decode('utf-8', 'ignore').strip()
+                version = v or None
+            except Exception:
+                version = None
+        health['version'] = version or 'unknown'
+
+        # last_update: время последнего коммита, иначе mtime проекта
+        last_update = None
+        try:
+            res = subprocess.run(['git', '-C', root, 'log', '-1', '--format=%cI'],
+                                 stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=2)
+            ts = res.stdout.decode('utf-8', 'ignore').strip()
+            last_update = ts or None
+        except Exception:
+            last_update = None
+        if not last_update:
+            try:
+                mtime = os.path.getmtime(root)
+                last_update = datetime.fromtimestamp(mtime).isoformat()
+            except Exception:
+                last_update = datetime.now().isoformat()
+        health['last_update'] = last_update
     except Exception:
+        # Не роняем health, просто не добавляем версионную информацию
         pass
     return health
