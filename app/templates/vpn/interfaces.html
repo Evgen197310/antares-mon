@@ -63,32 +63,49 @@
       </tr>
     </thead>
     <tbody>
-      {% for r in routers %}
-      <tr>
-        <td>
-          <a href="{{ url_for('vpn.interfaces', identity=r.identity) }}" class="text-decoration-none">{{ r.identity or '-' }}</a>
-        </td>
-        <td>{{ r.iface or '-' }}</td>
-        <td><code>{{ r.ip or '-' }}</code></td>
-        <td>{{ r.type or '-' }}</td>
-      </tr>
+      {% for g in groups %}
+        <tr class="table-secondary" data-type="group">
+          <td colspan="4">
+            <strong><a href="{{ url_for('vpn.interfaces', identity=g.identity) }}" class="text-decoration-none">{{ g.identity }}</a></strong>
+          </td>
+        </tr>
+        {% for r in g.items %}
+        <tr data-type="item">
+          <td></td>
+          <td>{{ r.iface or '-' }}</td>
+          <td><code>{{ r.ip or '-' }}</code></td>
+          <td>{{ r.type or '-' }}</td>
+        </tr>
+        {% endfor %}
       {% endfor %}
     </tbody>
   </table>
+  {% if not groups or groups|length == 0 %}
+    <div class="alert alert-warning mt-2">Нет данных для отображения.</div>
+  {% endif %}
 </div>
 {% endblock %}
 
 {% block scripts %}
 <script>
-// Простой клиентский фильтр по всем ячейкам
+// Фильтр: если совпало имя устройства (строка-группа), показываем всю группу
 const input = document.getElementById('flt');
 const table = document.getElementById('mt-table');
 if (input && table) {
-  input.addEventListener('input', function() {
-    const q = this.value.toLowerCase();
+  input.addEventListener('input', function () {
+    const q = this.value.trim().toLowerCase();
+    let currentGroupVisible = true;
     for (const tr of table.tBodies[0].rows) {
+      const type = tr.dataset.type || 'item';
       const txt = tr.innerText.toLowerCase();
-      tr.style.display = txt.indexOf(q) >= 0 ? '' : 'none';
+      if (type === 'group') {
+        const match = q === '' || txt.indexOf(q) >= 0;
+        currentGroupVisible = match;
+        tr.style.display = match ? '' : (q === '' ? '' : 'none');
+      } else {
+        const rowMatch = q === '' || txt.indexOf(q) >= 0;
+        tr.style.display = (currentGroupVisible || rowMatch) ? '' : 'none';
+      }
     }
   });
 }

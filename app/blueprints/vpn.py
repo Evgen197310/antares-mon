@@ -285,10 +285,27 @@ def interfaces():
         address_count = len(rows)
         device_count = len({r.get('identity') for r in rows if r.get('identity')})
         interface_count = len({(r.get('identity'), r.get('iface')) for r in rows if r.get('identity') and r.get('iface')})
-        return render_template('vpn/interfaces.html', routers=rows, address_count=address_count, device_count=device_count, interface_count=interface_count, selected_identity=selected_identity)
+        # Группируем по устройству
+        groups_dict = {}
+        for r in rows:
+            name = (r.get('identity') or '').strip() or '-'
+            groups_dict.setdefault(name, []).append(r)
+        # Сортируем устройства и их интерфейсы
+        groups = []
+        for name in sorted(groups_dict.keys(), key=lambda x: x.lower()):
+            items = sorted(groups_dict[name], key=lambda t: (t.get('iface') or '', t.get('ip') or ''))
+            groups.append({'identity': name, 'items': items})
+
+        return render_template('vpn/interfaces.html',
+                               groups=groups,
+                               routers=rows,
+                               address_count=address_count,
+                               device_count=device_count,
+                               interface_count=interface_count,
+                               selected_identity=selected_identity)
     except Exception as e:
         current_app.logger.error(f"VPN interfaces error: {e}")
-        return render_template('vpn/interfaces.html', routers=[], address_count=0, device_count=0, interface_count=0, selected_identity='')
+        return render_template('vpn/interfaces.html', groups=[], routers=[], address_count=0, device_count=0, interface_count=0, selected_identity='')
 
 @bp.route('/history')
 def history():
