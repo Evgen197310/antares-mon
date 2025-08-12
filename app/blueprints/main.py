@@ -149,15 +149,24 @@ def index():
     
     # Версия приложения для немедленного отображения на странице
     try:
-        app_version, _lv = _get_version_info()
+        # Получаем версию приложения и дату начала БД
+        version_info = _get_version_info()
+        app_version = version_info[0] if version_info and len(version_info) > 0 else 'unknown'
+        
+        from app.utils.db_info import get_db_start_date
+        db_start_date = get_db_start_date()
+    
     except Exception:
         app_version = 'unknown'
-
-    return render_template('index.html', stats=stats,
-                            vpn_users=vpn_users,
-                            rdp_users=rdp_users,
-                            smb_files=smb_files,
-                            app_version=app_version)
+        db_start_date = None
+    
+    return render_template('index.html', 
+                         stats=stats, 
+                         vpn_users=vpn_users,
+                         rdp_users=rdp_users,
+                         smb_files=smb_files,
+                         app_version=app_version,
+                         db_start_date=db_start_date)
 
 @bp.route('/health')
 def health_check():

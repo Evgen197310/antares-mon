@@ -64,9 +64,29 @@ def create_app(config_class=Config):
     app.register_blueprint(auth_bp, url_prefix='/auth')
     app.register_blueprint(admin_bp, url_prefix='/admin')
     
-    # Регистрация фильтров Jinja2
+    # Регистрируем фильтры Jinja2
     from app.utils.filters import register_filters
     register_filters(app)
+    
+    # Регистрируем context processor для глобальных переменных
+    @app.context_processor
+    def inject_global_vars():
+        from app.utils.db_info import get_db_start_date
+        from app.blueprints.api import _get_version_info
+        
+        try:
+            version_info = _get_version_info()
+            app_version = version_info[0] if version_info and len(version_info) > 0 else 'unknown'
+            db_start_date = get_db_start_date()
+        except Exception as e:
+            app.logger.error(f"Error in context processor: {e}")
+            app_version = 'unknown'
+            db_start_date = None
+        
+        return {
+            'app_version': app_version,
+            'db_start_date': db_start_date
+        }
     
     # Контекстный процессор для глобальных переменных шаблонов
     @app.context_processor

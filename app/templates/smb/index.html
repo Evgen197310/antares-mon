@@ -52,50 +52,109 @@
     <!-- Статистика -->
     <div class="row mb-4">
         <div class="col-md-3">
-            <div class="card text-white bg-success">
-                <div class="card-header">
-                    <i class="fas fa-folder-open"></i>
-                    Открытые файлы
+            <a href="{{ url_for('smb.files_open_now') }}" class="text-decoration-none">
+                <div class="card text-white bg-success card-hover">
+                    <div class="card-header">
+                        <i class="fas fa-folder-open"></i>
+                        Открытые файлы
+                    </div>
+                    <div class="card-body">
+                        <h3>{{ stats.open_files if stats else 0 }}</h3>
+                        <p class="card-text">Сейчас открыто</p>
+                    </div>
                 </div>
-                <div class="card-body">
-                    <h3>{{ stats.open_files if stats else 0 }}</h3>
-                    <p class="card-text">Сейчас открыто</p>
-                </div>
-            </div>
+            </a>
         </div>
         <div class="col-md-3">
-            <div class="card text-white bg-info">
-                <div class="card-header">
-                    <i class="fas fa-users"></i>
-                    Активные пользователи
+            <a href="{{ url_for('smb.files_open_now') }}?show_active_users=1" class="text-decoration-none">
+                <div class="card text-white bg-info card-hover">
+                    <div class="card-header">
+                        <i class="fas fa-users"></i>
+                        Активные пользователи
+                    </div>
+                    <div class="card-body">
+                        <h3>{{ stats.active_users if stats else 0 }}</h3>
+                        <p class="card-text">Подключено</p>
+                    </div>
                 </div>
-                <div class="card-body">
-                    <h3>{{ stats.active_users if stats else 0 }}</h3>
-                    <p class="card-text">Подключено</p>
-                </div>
-            </div>
+            </a>
         </div>
         <div class="col-md-3">
-            <div class="card text-white bg-warning">
-                <div class="card-header">
-                    <i class="fas fa-file"></i>
-                    Всего файлов
+            <a href="{{ url_for('smb.files_modified', days=1) }}" class="text-decoration-none">
+                <div class="card text-white bg-warning card-hover">
+                    <div class="card-header">
+                        <i class="fas fa-edit"></i>
+                        Изменено файлов за день
+                    </div>
+                    <div class="card-body">
+                        <h3>{{ stats.modified_files_today if stats else 0 }}</h3>
+                        <p class="card-text">За последние 24ч</p>
+                    </div>
                 </div>
-                <div class="card-body">
-                    <h3>{{ stats.total_files if stats else 0 }}</h3>
-                    <p class="card-text">В системе</p>
-                </div>
-            </div>
+            </a>
         </div>
         <div class="col-md-3">
-            <div class="card text-white bg-secondary">
+            <a href="{{ url_for('smb.files_rdp_users') }}" class="text-decoration-none">
+                <div class="card text-white bg-secondary card-hover">
+                    <div class="card-header">
+                        <i class="fas fa-desktop"></i>
+                        Пользователи с RDP
+                    </div>
+                    <div class="card-body">
+                        <h3>{{ stats.users_with_rdp if stats else 0 }}</h3>
+                        <p class="card-text">Активные RDP</p>
+                    </div>
+                </div>
+            </a>
+        </div>
+    </div>
+
+    <!-- Фильтры -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
                 <div class="card-header">
-                    <i class="fas fa-clock"></i>
-                    Активность за день
+                    <h5 class="mb-0">
+                        <i class="fas fa-filter"></i>
+                        Фильтры
+                    </h5>
                 </div>
                 <div class="card-body">
-                    <h3>{{ stats.daily_activity if stats else 0 }}</h3>
-                    <p class="card-text">Операций</p>
+                    <form method="GET" class="row g-3">
+                        <div class="col-md-3">
+                            <label for="search_user" class="form-label">Пользователь</label>
+                            <input type="text" class="form-control" id="search_user" name="search_user" 
+                                   value="{{ search_user or '' }}" placeholder="Поиск по пользователю">
+                        </div>
+                        <div class="col-md-3">
+                            <label for="search_file" class="form-label">Файл</label>
+                            <input type="text" class="form-control" id="search_file" name="search_file" 
+                                   value="{{ search_file or '' }}" placeholder="Поиск по файлу">
+                        </div>
+                        <div class="col-md-2">
+                            <div class="form-check mt-4">
+                                <input class="form-check-input" type="checkbox" id="filter_modified" 
+                                       name="filter_modified" value="1" {{ 'checked' if filter_modified }}>
+                                <label class="form-check-label" for="filter_modified">
+                                    <i class="fas fa-edit text-warning"></i> Изменен
+                                </label>
+                            </div>
+                        </div>
+                        <div class="col-md-2">
+                            <div class="form-check mt-4">
+                                <input class="form-check-input" type="checkbox" id="filter_rdp_session" 
+                                       name="filter_rdp_session" value="1" {{ 'checked' if filter_rdp_session }}>
+                                <label class="form-check-label" for="filter_rdp_session">
+                                    <i class="fas fa-desktop text-info"></i> Внутри RDP
+                                </label>
+                            </div>
+                        </div>
+                        <div class="col-md-2">
+                            <button type="submit" class="btn btn-primary mt-4">
+                                <i class="fas fa-search"></i> Применить
+                            </button>
+                        </div>
+                    </form>
                 </div>
             </div>
         </div>
@@ -109,6 +168,13 @@
                     <h5 class="mb-0">
                         <i class="fas fa-list"></i>
                         Последние открытые файлы
+                        {% if filter_modified or filter_rdp_session %}
+                            <span class="badge bg-primary ms-2">
+                                {% if filter_modified %}Изменен{% endif %}
+                                {% if filter_modified and filter_rdp_session %} + {% endif %}
+                                {% if filter_rdp_session %}RDP{% endif %}
+                            </span>
+                        {% endif %}
                     </h5>
                 </div>
                 <div class="card-body">
@@ -152,9 +218,17 @@
                                             </span>
                                         </td>
                                         <td>
-                                            <span class="badge bg-success">
-                                                Открыт
-                                            </span>
+                                            <span class="badge bg-success">Открыт</span>
+                                            {% if file.is_modified %}
+                                                <span class="badge bg-warning text-dark ms-1" title="Файл был изменен">
+                                                    <i class="fas fa-edit"></i> Изменен
+                                                </span>
+                                            {% endif %}
+                                            {% if file.in_rdp_session %}
+                                                <span class="badge bg-info text-dark ms-1" title="Открыт внутри RDP сессии">
+                                                    <i class="fas fa-desktop"></i> RDP
+                                                </span>
+                                            {% endif %}
                                         </td>
                                         <td>
                                             <a href="{{ url_for('smb.file_detail', file_id=file.id) if file.id else '#' }}" 
@@ -191,13 +265,13 @@
                 <div class="card-header">
                     <h5 class="mb-0">
                         <i class="fas fa-users"></i>
-                        Активные пользователи
+                        Все пользователи
                     </h5>
                 </div>
                 <div class="card-body">
                     {% if users %}
                         <div class="row">
-                            {% for user in users[:8] %}
+                            {% for user in users %}
                             <div class="col-md-3 mb-3">
                                 <div class="card">
                                     <div class="card-body text-center">
@@ -215,15 +289,11 @@
                             </div>
                             {% endfor %}
                         </div>
-                        <div class="text-center mt-3">
-                            <a href="{{ url_for('smb.index') }}" class="btn btn-primary">
-                                Показать всех пользователей
-                            </a>
-                        </div>
+
                     {% else %}
                         <div class="alert alert-info text-center">
                             <i class="fas fa-info-circle"></i>
-                            В данный момент нет активных пользователей SMB
+                            Пользователи SMB не найдены
                         </div>
                     {% endif %}
                 </div>

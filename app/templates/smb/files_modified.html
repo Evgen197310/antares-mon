@@ -1,0 +1,228 @@
+{% extends "base.html" %}
+{% block title %}Изменённые файлы (SMB){% endblock %}
+{% block content %}
+<div class="container-fluid">
+  <div class="row">
+    <div class="col-12">
+      <h1 class="mb-4"><i class="fas fa-edit text-warning"></i> Изменённые файлы</h1>
+      
+      <!-- Breadcrumbs -->
+      <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+          <li class="breadcrumb-item"><a href="/">Главная</a></li>
+          <li class="breadcrumb-item"><a href="{{ url_for('smb.index') }}">SMB</a></li>
+          <li class="breadcrumb-item active" aria-current="page">Изменённые файлы</li>
+        </ol>
+      </nav>
+    </div>
+  </div>
+
+  <!-- Быстрый выбор периода -->
+  <div class="row mb-4">
+    <div class="col-12">
+      <div class="card">
+        <div class="card-header">
+          <h5 class="mb-0"><i class="fas fa-calendar-alt"></i> Период</h5>
+        </div>
+        <div class="card-body">
+          <div class="btn-group" role="group" aria-label="Выбор периода">
+            <a href="{{ url_for('smb.files_modified', days=1) }}" 
+               class="btn {{ 'btn-primary' if days == 1 else 'btn-outline-primary' }}">
+              Сегодня
+            </a>
+            <a href="{{ url_for('smb.files_modified', days=7) }}" 
+               class="btn {{ 'btn-primary' if days == 7 else 'btn-outline-primary' }}">
+              7 дней
+            </a>
+            <a href="{{ url_for('smb.files_modified', days=30) }}" 
+               class="btn {{ 'btn-primary' if days == 30 else 'btn-outline-primary' }}">
+              30 дней
+            </a>
+            <a href="{{ url_for('smb.files_modified', days=365) }}" 
+               class="btn {{ 'btn-primary' if days == 365 else 'btn-outline-primary' }}">
+              Весь период
+            </a>
+          </div>
+          <small class="text-muted ms-3">
+            Показаны данные за {{ days }} {{ 'день' if days == 1 else ('дня' if days < 5 else 'дней') }}
+            (с {{ date_from.strftime('%d.%m.%Y %H:%M') }})
+          </small>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Статистика -->
+  <div class="row mb-4">
+    <div class="col-md-4">
+      <div class="card text-white bg-warning">
+        <div class="card-header">
+          <i class="fas fa-file-alt"></i> Изменённых файлов
+        </div>
+        <div class="card-body">
+          <h3>{{ stats.total_modified_files if stats else 0 }}</h3>
+          <p class="card-text">уникальных файлов</p>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-4">
+      <div class="card text-white bg-info">
+        <div class="card-header">
+          <i class="fas fa-users"></i> Активных пользователей
+        </div>
+        <div class="card-body">
+          <h3>{{ stats.total_users if stats else 0 }}</h3>
+          <p class="card-text">изменяли файлы</p>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-4">
+      <div class="card text-white bg-success">
+        <div class="card-header">
+          <i class="fas fa-edit"></i> Всего изменений
+        </div>
+        <div class="card-body">
+          <h3>{{ stats.total_modifications if stats else 0 }}</h3>
+          <p class="card-text">операций (один файл может изменяться несколько раз)</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Топ пользователей -->
+  <div class="row mb-4">
+    <div class="col-12">
+      <div class="card">
+        <div class="card-header">
+          <h5 class="mb-0"><i class="fas fa-trophy text-warning"></i> Топ пользователей по изменениям</h5>
+        </div>
+        <div class="card-body">
+          {% if top_users %}
+          <div class="table-responsive">
+            <table class="table table-striped table-hover">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Пользователь</th>
+                  <th>Изменённых файлов</th>
+                  <th>Всего изменений</th>
+                  <th>Последняя активность</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for user in top_users %}
+                <tr>
+                  <td>{{ loop.index }}</td>
+                  <td>
+                    <a href="{{ url_for('smb.user_detail', user_id=user.user_id, days=days, filter_modified=1) }}" 
+                       class="text-decoration-none">
+                      <i class="fas fa-user"></i> {{ user.username }}
+                    </a>
+                  </td>
+                  <td>
+                    <span class="badge bg-warning">{{ user.modified_files }}</span>
+                  </td>
+                  <td>
+                    <span class="badge bg-success">{{ user.total_modifications }}</span>
+                  </td>
+                  <td>
+                    <small class="text-muted">{{ user.last_activity.strftime('%d.%m.%Y %H:%M') if user.last_activity else 'N/A' }}</small>
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          {% else %}
+          <div class="alert alert-info">
+            <i class="fas fa-info-circle"></i> За выбранный период изменений файлов не обнаружено.
+          </div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Последние изменённые файлы -->
+  <div class="row">
+    <div class="col-12">
+      <div class="card">
+        <div class="card-header">
+          <h5 class="mb-0"><i class="fas fa-clock text-primary"></i> Последние изменённые файлы</h5>
+        </div>
+        <div class="card-body">
+          {% if recent_files %}
+          <div class="table-responsive">
+            <table class="table table-striped table-hover">
+              <thead>
+                <tr>
+                  <th>Файл</th>
+                  <th>Пользователь</th>
+                  <th>Время изменения</th>
+                  <th>Размер</th>
+                  <th>Новый размер</th>
+                  <th>Действия</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for file in recent_files %}
+                <tr>
+                  <td>
+                    <a href="{{ url_for('smb.download_file', file_id=file.file_id) }}" 
+                       class="text-decoration-none" 
+                       title="{{ file.path }}">
+                      <i class="fas fa-file"></i> 
+                      {{ file.path.split('/')[-1] if '/' in file.path else file.path.split('\\')[-1] }}
+                    </a>
+                  </td>
+                  <td>
+                    <a href="{{ url_for('smb.user_detail', user_id=file.user_id, days=days, filter_modified=1) }}" 
+                       class="text-decoration-none">
+                      <i class="fas fa-user"></i> {{ file.username }}
+                    </a>
+                  </td>
+                  <td>
+                    <small>{{ file.open_time.strftime('%d.%m.%Y %H:%M:%S') if file.open_time else 'N/A' }}</small>
+                  </td>
+                  <td>
+                    {% if file.initial_size %}
+                      <small class="text-muted">{{ "%.1f"|format(file.initial_size/1024) }} KB</small>
+                    {% else %}
+                      <small class="text-muted">N/A</small>
+                    {% endif %}
+                  </td>
+                  <td>
+                    {% if file.final_size %}
+                      <small class="text-success fw-bold">{{ "%.1f"|format(file.final_size/1024) }} KB</small>
+                    {% else %}
+                      <small class="text-muted">N/A</small>
+                    {% endif %}
+                  </td>
+                  <td>
+                    <a href="{{ url_for('smb.download_file', file_id=file.file_id) }}" 
+                       class="btn btn-sm btn-outline-primary" 
+                       title="Скачать файл">
+                      <i class="fas fa-download"></i>
+                    </a>
+                    <a href="{{ url_for('smb.file_detail', file_id=file.file_id, days=days) }}" 
+                       class="btn btn-sm btn-outline-info" 
+                       title="Детали файла">
+                      <i class="fas fa-info-circle"></i>
+                    </a>
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          {% else %}
+          <div class="alert alert-info">
+            <i class="fas fa-info-circle"></i> За выбранный период изменённых файлов не найдено.
+          </div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

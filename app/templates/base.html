@@ -115,12 +115,17 @@
     <footer class="bg-light mt-5 py-3">
         <div class="container">
             <div class="row">
-                <div class="col-md-6">
+                <div class="col-md-4">
                     <small class="text-muted">
                         © 2025 Система мониторинга сетевой инфраструктуры
                     </small>
                 </div>
-                <div class="col-md-6 text-end">
+                <div class="col-md-4 text-center">
+                    <small class="text-muted">
+                        Версия: {{ app_version or 'unknown' }} | Данные с: {{ db_start_date or 'неизвестно' }}
+                    </small>
+                </div>
+                <div class="col-md-4 text-end">
                     <small class="text-muted">
                         Время сервера: <span id="server-time">{{ now.strftime('%d.%m.%Y %H:%M:%S') if now else '' }}</span>
                     </small>
