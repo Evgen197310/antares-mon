@@ -596,40 +596,46 @@ def status():
 def get_vpn_dashboard_data():
     """Получить данные VPN для дашборда"""
     try:
-        from app.utils.vpn_utils import read_active_vpn_sessions
-        
-        # Активные сессии из CSV
+        # Активные сессии из CSV (используем существующую логику)
+        from app.blueprints.vpn import read_active_vpn_sessions
         active_sessions = read_active_vpn_sessions()
         
         # Статистика за сегодня из БД
-        conn = db_manager.get_connection('vpn')
-        if conn:
-            cursor = conn.cursor(dictionary=True)
-            
-            # Сессии за сегодня
-            cursor.execute("""
-                SELECT COUNT(*) as today_count
-                FROM session_history 
-                WHERE DATE(login_time) = CURDATE()
-            """)
-            today_result = cursor.fetchone()
-            
-            # Количество устройств MikroTik
-            cursor.execute("""
-                SELECT COUNT(DISTINCT router) as device_count
-                FROM session_history 
-                WHERE router IS NOT NULL AND router != ''
-            """)
-            devices_result = cursor.fetchone()
-            
-            cursor.close()
-            conn.close()
-            
+        try:
+            with db_manager.get_connection('vpn') as conn:
+                cursor = conn.cursor(dictionary=True)
+                # Сессии за сегодня
+                cursor.execute("""
+                    SELECT COUNT(*) as today_count
+                    FROM session_history 
+                    WHERE DATE(time_start) = CURDATE()
+                """)
+                today_result = cursor.fetchone()
+                
+                # Количество устройств MikroTik
+                cursor.execute("""
+                    SELECT COUNT(DISTINCT router) as device_count
+                    FROM session_history 
+                    WHERE router IS NOT NULL AND router != ''
+                """)
+                devices_result = cursor.fetchone()
+                
+                cursor.close()
+                
+                return {
+                    'active_sessions': len(active_sessions),
+                    'today_sessions': today_result['today_count'] if today_result else 0,
+                    'mikrotik_devices': devices_result['device_count'] if devices_result else 0
+                }
+        except Exception as db_error:
+            current_app.logger.error(f"VPN DB error: {db_error}")
+            # Возвращаем хотя бы активные сессии
             return {
                 'active_sessions': len(active_sessions),
-                'today_sessions': today_result['today_count'] if today_result else 0,
-                'mikrotik_devices': devices_result['device_count'] if devices_result else 0
+                'today_sessions': 0,
+                'mikrotik_devices': 0
             }
+            
     except Exception as e:
         current_app.logger.error(f"VPN dashboard data error: {e}")
     
@@ -638,19 +644,15 @@ def get_vpn_dashboard_data():
 def get_rdp_dashboard_data():
     """Получить данные RDP для дашборда"""
     try:
-        conn = db_manager.get_connection('rdp')
-        if conn:
+        with db_manager.get_connection('rdp') as conn:
             cursor = conn.cursor(dictionary=True)
-            
             # Активные сессии
             cursor.execute("""
                 SELECT COUNT(*) as active_count
                 FROM rdp_active_sessions
             """)
             active_result = cursor.fetchone()
-            
             cursor.close()
-            conn.close()
             
             return {
                 'active_sessions': active_result['active_count'] if active_result else 0
@@ -663,35 +665,31 @@ def get_rdp_dashboard_data():
 def get_smb_dashboard_data():
     """Получить данные SMB для дашборда"""
     try:
-        conn = db_manager.get_connection('smb')
-        if conn:
+        with db_manager.get_connection('smb') as conn:
             cursor = conn.cursor(dictionary=True)
-            
-            # Открытые файлы
+            # Открытые файлы (используем правильное имя таблицы)
             cursor.execute("""
                 SELECT COUNT(*) as open_count
-                FROM active_smb_sessions
+                FROM smb_active_sessions
             """)
             open_result = cursor.fetchone()
             
-            # Файлы изменённые за день
+            # Файлы изменённые за день (используем правильное имя колонки)
             cursor.execute("""
                 SELECT COUNT(*) as modified_count
                 FROM smb_session_history 
-                WHERE DATE(open_time) = CURDATE()
+                WHERE DATE(time_start) = CURDATE()
             """)
             modified_result = cursor.fetchone()
             
             # Пользователи с RDP и открытыми файлами
             cursor.execute("""
                 SELECT COUNT(DISTINCT s.user_id) as rdp_users_count
-                FROM active_smb_sessions s
+                FROM smb_active_sessions s
                 INNER JOIN rdp_active_sessions r ON s.user_id = r.user_id
             """)
             rdp_users_result = cursor.fetchone()
-            
             cursor.close()
-            conn.close()
             
             return {
                 'open_files': open_result['open_count'] if open_result else 0,
