@@ -574,17 +574,17 @@ def mikrotik_topology():
             current_app.logger.warning(f"FULL_MAP_FILE not found: {full_map}")
             return render_template('vpn/mikrotik_topology.html', nodes=[], edges=[])
 
-        # какие L2TP-префиксы считаем активными (как в оригинале)
-        L2TP_PREFIXES = ("192.168.90.", "10.10.20.")
+        # VPN префиксы для L2TP и SSTP подключений
+        VPN_PREFIXES = ("192.168.90.", "10.10.20.", "10.10.21.", "192.168.92.")
 
-        def is_l2tp_ip(ip: str) -> bool:
-            return any(ip.startswith(p) for p in L2TP_PREFIXES)
+        def is_vpn_ip(ip: str) -> bool:
+            return any(ip.startswith(p) for p in VPN_PREFIXES)
 
         def subnet_key(ip: str) -> str:
             return ".".join(ip.split(".")[:3])
 
         routers = {}
-        l2tp_peers = []
+        vpn_peers = []
         with open(full_map, encoding='utf-8') as f:
             for row in csv.reader(f):
                 if len(row) < 4:
@@ -593,45 +593,59 @@ def mikrotik_topology():
                 flag = row[4].strip() if len(row) > 4 else ""
                 if flag == "I":  # пропускаем внутренние
                     continue
-                r = routers.setdefault(identity, {'lans': [], 'l2tps': []})
+                r = routers.setdefault(identity, {'lans': [], 'vpns': []})
                 if iface.startswith(('bridge', 'ether', 'vlan')):
                     r['lans'].append(f"{ip}/{mask}")
-                if iface.lower().startswith('l2tp') or is_l2tp_ip(ip):
-                    r['l2tps'].append(f"{ip}/{mask}")
-                    l2tp_peers.append((identity, ip))
+                # Учитываем L2TP, SSTP и другие VPN интерфейсы
+                if (iface.lower().startswith(('l2tp', 'sstp')) or 
+                    'l2tp' in iface.lower() or 'sstp' in iface.lower() or 
+                    is_vpn_ip(ip)):
+                    r['vpns'].append(f"{ip}/{mask}")
+                    vpn_peers.append((identity, ip, iface))
 
-        l2tp_subnets = {}
-        for identity, ip in l2tp_peers:
+        vpn_subnets = {}
+        for identity, ip, iface in vpn_peers:
             key = subnet_key(ip)
-            entry = l2tp_subnets.setdefault(key, {'server': None, 'clients': []})
-            if ip.endswith('.1'):
-                entry['server'] = (identity, ip)
+            entry = vpn_subnets.setdefault(key, {'server': None, 'clients': []})
+            
+            # Определяем сервер и клиентов по IP и типу интерфейса
+            is_server = (ip.endswith('.1') or ip.endswith('.254') or 
+                        'in' in iface.lower() or 'server' in iface.lower())
+            
+            if is_server:
+                entry['server'] = (identity, ip, iface)
             else:
-                entry['clients'].append((identity, ip))
+                entry['clients'].append((identity, ip, iface))
 
         nodes = []
         for identity, info in routers.items():
             label = f"<b>{identity}</b>"
             if info['lans']:
                 label += "\nLAN: " + ", ".join(info['lans'])
-            if info['l2tps']:
-                label += "\nL2TP: " + ", ".join(info['l2tps'])
+            if info['vpns']:
+                label += "\nVPN: " + ", ".join(info['vpns'])
             nodes.append({"id": identity, "label": label, "shape": "box", "color": "#AED6F1"})
 
         edges = []
-        for key, entry in l2tp_subnets.items():
+        for key, entry in vpn_subnets.items():
             if not entry['server']:
                 continue
-            srv_id, srv_ip = entry['server']
-            for cli_id, cli_ip in entry['clients']:
+            srv_id, srv_ip, srv_iface = entry['server']
+            for cli_id, cli_ip, cli_iface in entry['clients']:
                 if cli_id == srv_id:
                     continue
+                
+                # Определяем тип подключения для подписи
+                conn_type = "L2TP"
+                if 'sstp' in cli_iface.lower() or 'sstp' in srv_iface.lower():
+                    conn_type = "SSTP"
+                
                 edges.append({
                     "from": cli_id,
                     "to":   srv_id,
-                    "label": f"{key}.x  ({cli_ip}\u2192{srv_ip})",
+                    "label": f"{conn_type} {key}.x\n({cli_ip}\u2192{srv_ip})",
                     "arrows": {"to": {"enabled": True, "scaleFactor": 1.3}},
-                    "color": "#2874A6",
+                    "color": "#2874A6" if conn_type == "L2TP" else "#E74C3C",
                     "width": 2
                 })
 
