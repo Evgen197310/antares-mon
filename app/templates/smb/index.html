@@ -197,11 +197,11 @@
                                         <td>
                                             <i class="fas fa-file"></i>
                                             {% if file.id %}
-                                            <a href="{{ url_for('smb.download_file', file_id=file.id) }}" class="text-decoration-none" title="Скачать файл">
+                                            <a href="{{ url_for('smb.download_file', file_id=file.id) }}" class="text-decoration-none" title="{{ file.path or file.filename or 'N/A' }}">
                                                 <strong>{{ file.filename or 'N/A' }}</strong>
                                             </a>
                                             {% else %}
-                                            <strong>{{ file.filename or 'N/A' }}</strong>
+                                            <strong title="{{ file.path or file.filename or 'N/A' }}">{{ file.filename or 'N/A' }}</strong>
                                             {% endif %}
                                         </td>
                                         <td>

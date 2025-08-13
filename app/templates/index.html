@@ -119,7 +119,7 @@
                     </div>
                 </div>
                 {% if smb_files %}
-                <div class="mt-2 small">
+                <div class="mt-2 small" id="smb-files-list">
                     <strong>Сейчас:</strong>
                     {% for f in smb_files %}
                       <a href="{{ url_for('smb.download_file', file_id=f.id) }}" class="me-2" title="{{ f.full_path }}">{{ f.name }}</a>

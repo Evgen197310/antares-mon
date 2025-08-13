@@ -561,81 +561,93 @@ def health():
 
 @bp.route('/status')
 def status():
-    """Общий статус системы мониторинга с данными для автообновления"""
+    """Статус системы мониторинга"""
     try:
-        # Получаем данные для всех модулей
+        # Получаем данные из всех модулей
         vpn_data = get_vpn_dashboard_data()
         rdp_data = get_rdp_dashboard_data()
         smb_data = get_smb_dashboard_data()
         
-        # Формируем ответ для автообновления
-        status_data = {
-            'timestamp': datetime.now().isoformat(),
+        # Время последнего обновления
+        last_update = datetime.now().strftime("%d.%m.%Y %H:%M:%S")
+        
+        return jsonify({
             'status': 'ok',
+            'timestamp': datetime.now().isoformat(),
+            'last_update': last_update,
+            'uptime': 'N/A',  # Упрощённо, пока не исправим
             'vpn_active': vpn_data.get('active_sessions', 0),
+            'vpn_today': vpn_data.get('today_sessions', 0),
+            'mikrotik_devices': vpn_data.get('mikrotik_devices', 0),
             'rdp_active': rdp_data.get('active_sessions', 0),
             'smb_files': smb_data.get('open_files', 0),
-            'mikrotik_devices': vpn_data.get('mikrotik_devices', 0),
-            'vpn_today': vpn_data.get('today_sessions', 0),
-            'rdp_with_files': smb_data.get('rdp_users_with_files', 0),
             'files_modified_today': smb_data.get('files_modified_today', 0),
-            'uptime': get_system_uptime(),
-            'last_update': datetime.now().strftime('%d.%m.%Y %H:%M:%S')
-        }
-        
-        return jsonify(status_data)
-    
+            'rdp_with_files': smb_data.get('rdp_users_with_files', 0)
+        })
     except Exception as e:
         current_app.logger.error(f"Status API error: {e}")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@bp.route('/test-dashboard')
+def test_dashboard():
+    """Тестовый endpoint для проверки dashboard функций"""
+    try:
+        # Тестируем RDP напрямую
+        rdp_count = 0
+        try:
+            with db_manager.get_connection('rdp') as conn:
+                with conn.cursor() as cursor:
+                    cursor.execute("SELECT COUNT(*) FROM rdp_active_sessions")
+                    result = cursor.fetchone()
+                    rdp_count = result[0] if result else 0
+        except Exception as e:
+            current_app.logger.error(f"Test RDP error: {e}")
+        
+        # Тестируем SMB напрямую
+        smb_count = 0
+        try:
+            with db_manager.get_connection('smb') as conn:
+                with conn.cursor() as cursor:
+                    cursor.execute("SELECT COUNT(*) FROM active_smb_sessions")
+                    result = cursor.fetchone()
+                    smb_count = result[0] if result else 0
+        except Exception as e:
+            current_app.logger.error(f"Test SMB error: {e}")
+        
         return jsonify({
-            'timestamp': datetime.now().isoformat(),
-            'status': 'error',
-            'error': str(e)
-        }), 500
+            'status': 'test_ok',
+            'rdp_direct_count': rdp_count,
+            'smb_direct_count': smb_count,
+            'timestamp': datetime.now().isoformat()
+        })
+    except Exception as e:
+        current_app.logger.error(f"Test dashboard error: {e}")
+        return jsonify({'status': 'test_error', 'message': str(e)}), 500
 
 def get_vpn_dashboard_data():
     """Получить данные VPN для дашборда"""
     try:
-        # Активные сессии из CSV (используем существующую логику)
-        from app.blueprints.vpn import read_active_vpn_sessions
-        active_sessions = read_active_vpn_sessions()
-        
-        # Статистика за сегодня из БД
-        try:
-            with db_manager.get_connection('vpn') as conn:
-                cursor = conn.cursor(dictionary=True)
-                # Сессии за сегодня
-                cursor.execute("""
-                    SELECT COUNT(*) as today_count
-                    FROM session_history 
-                    WHERE DATE(time_start) = CURDATE()
-                """)
-                today_result = cursor.fetchone()
-                
-                # Количество устройств MikroTik
-                cursor.execute("""
-                    SELECT COUNT(DISTINCT router) as device_count
-                    FROM session_history 
-                    WHERE router IS NOT NULL AND router != ''
-                """)
-                devices_result = cursor.fetchone()
-                
-                cursor.close()
-                
-                return {
-                    'active_sessions': len(active_sessions),
-                    'today_sessions': today_result['today_count'] if today_result else 0,
-                    'mikrotik_devices': devices_result['device_count'] if devices_result else 0
-                }
-        except Exception as db_error:
-            current_app.logger.error(f"VPN DB error: {db_error}")
-            # Возвращаем хотя бы активные сессии
-            return {
-                'active_sessions': len(active_sessions),
-                'today_sessions': 0,
-                'mikrotik_devices': 0
-            }
+        # Используем внутренний запрос к рабочему VPN API endpoint
+        import requests
+        response = requests.get('http://127.0.0.1:5050/api/vpn/sessions', timeout=5)
+        if response.status_code == 200:
+            data = response.json()
             
+            # Подсчитываем уникальных пользователей
+            if data.get('data'):
+                unique_users = set()
+                for session in data['data']:
+                    if session.get('username'):
+                        unique_users.add(session['username'])
+                active_count = len(unique_users)
+            else:
+                active_count = 0
+                
+            return {
+                'active_sessions': active_count,
+                'today_sessions': 0,  # Упрощённо, пока не исправим
+                'mikrotik_devices': 0  # Упрощённо, пока не исправим
+            }
     except Exception as e:
         current_app.logger.error(f"VPN dashboard data error: {e}")
     
@@ -644,19 +656,23 @@ def get_vpn_dashboard_data():
 def get_rdp_dashboard_data():
     """Получить данные RDP для дашборда"""
     try:
-        with db_manager.get_connection('rdp') as conn:
-            cursor = conn.cursor(dictionary=True)
-            # Активные сессии
-            cursor.execute("""
-                SELECT COUNT(*) as active_count
-                FROM rdp_active_sessions
-            """)
-            active_result = cursor.fetchone()
-            cursor.close()
+        # Используем внутренний запрос к рабочему RDP API endpoint
+        import requests
+        response = requests.get('http://127.0.0.1:5050/api/rdp/sessions', timeout=5)
+        if response.status_code == 200:
+            data = response.json()
             
-            return {
-                'active_sessions': active_result['active_count'] if active_result else 0
-            }
+            # Подсчитываем уникальных пользователей, а не общее количество сессий
+            if data.get('data'):
+                unique_users = set()
+                for session in data['data']:
+                    if session.get('username'):
+                        unique_users.add(session['username'])
+                count = len(unique_users)
+            else:
+                count = 0
+                
+            return {'active_sessions': count}
     except Exception as e:
         current_app.logger.error(f"RDP dashboard data error: {e}")
     
@@ -665,36 +681,30 @@ def get_rdp_dashboard_data():
 def get_smb_dashboard_data():
     """Получить данные SMB для дашборда"""
     try:
-        with db_manager.get_connection('smb') as conn:
-            cursor = conn.cursor(dictionary=True)
-            # Открытые файлы (используем правильное имя таблицы)
-            cursor.execute("""
-                SELECT COUNT(*) as open_count
-                FROM smb_active_sessions
-            """)
-            open_result = cursor.fetchone()
+        # Используем внутренний запрос к рабочему SMB API endpoint
+        import requests
+        response = requests.get('http://127.0.0.1:5050/api/smb/sessions', timeout=5)
+        if response.status_code == 200:
+            data = response.json()
             
-            # Файлы изменённые за день (используем правильное имя колонки)
-            cursor.execute("""
-                SELECT COUNT(*) as modified_count
-                FROM smb_session_history 
-                WHERE DATE(time_start) = CURDATE()
-            """)
-            modified_result = cursor.fetchone()
+            # Подсчитываем открытые файлы и уникальных пользователей
+            open_files_count = data.get('count', 0)
             
-            # Пользователи с RDP и открытыми файлами
-            cursor.execute("""
-                SELECT COUNT(DISTINCT s.user_id) as rdp_users_count
-                FROM smb_active_sessions s
-                INNER JOIN rdp_active_sessions r ON s.user_id = r.user_id
-            """)
-            rdp_users_result = cursor.fetchone()
-            cursor.close()
+            # Подсчитываем уникальных пользователей с открытыми файлами
+            unique_users_count = 0
+            if data.get('data'):
+                unique_users = set()
+                for session in data['data']:
+                    if session.get('username'):
+                        # Извлекаем имя пользователя из формата "DOMAIN\\username"
+                        username = session['username'].split('\\')[-1] if '\\' in session['username'] else session['username']
+                        unique_users.add(username)
+                unique_users_count = len(unique_users)
             
             return {
-                'open_files': open_result['open_count'] if open_result else 0,
-                'files_modified_today': modified_result['modified_count'] if modified_result else 0,
-                'rdp_users_with_files': rdp_users_result['rdp_users_count'] if rdp_users_result else 0
+                'open_files': open_files_count,
+                'files_modified_today': 0,  # Упрощённо, пока не исправим
+                'rdp_users_with_files': unique_users_count  # Количество уникальных пользователей с открытыми файлами
             }
     except Exception as e:
         current_app.logger.error(f"SMB dashboard data error: {e}")

@@ -21,11 +21,22 @@ class AutoRefresh {
     }
     
     init() {
-        this.createStatusIndicator();
+        console.log('AutoRefresh: Initializing with config:', {
+            interval: this.interval,
+            enabled: this.enabled,
+            method: this.method,
+            endpoint: this.endpoint
+        });
+        
+        // Пропускаем создание индикатора для упрощения отладки
+        // this.createStatusIndicator();
         this.bindEvents();
         
         if (this.enabled) {
+            console.log('AutoRefresh: Starting auto-refresh...');
             this.start();
+        } else {
+            console.log('AutoRefresh: Auto-refresh disabled');
         }
     }
     
@@ -116,13 +127,21 @@ class AutoRefresh {
     }
     
     start() {
+        console.log('AutoRefresh: start() called, method:', this.method);
+        
         if (this.method === 'websocket') {
+            console.log('AutoRefresh: Starting WebSocket...');
             this.startWebSocket();
         } else {
+            console.log('AutoRefresh: Starting polling with interval:', this.interval);
             this.startPolling();
         }
         this.enabled = true;
-        this.updateStatusIndicator();
+        
+        // Пропускаем обновление индикатора для упрощения отладки
+        // this.updateStatusIndicator();
+        
+        console.log('AutoRefresh: Started successfully');
     }
     
     stop() {
@@ -147,9 +166,16 @@ class AutoRefresh {
     }
     
     startPolling() {
+        console.log('AutoRefresh: Setting up polling timer with interval:', this.interval);
         this.timer = setInterval(() => {
+            console.log('AutoRefresh: Timer triggered, calling refresh...');
             this.refresh();
         }, this.interval);
+        console.log('AutoRefresh: Polling timer set, ID:', this.timer);
+        
+        // Выполняем первое обновление сразу
+        console.log('AutoRefresh: Performing initial refresh...');
+        this.refresh();
     }
     
     startWebSocket() {
@@ -182,19 +208,23 @@ class AutoRefresh {
     
     async refresh() {
         try {
+            console.log('AutoRefresh: Starting refresh...');
             this.updateStatusIndicator('updating');
             
             // Определяем API endpoint для текущей страницы
             const apiEndpoint = this.getApiEndpoint();
+            console.log('AutoRefresh: API endpoint:', apiEndpoint);
             
             if (apiEndpoint) {
                 const response = await fetch(apiEndpoint);
                 if (response.ok) {
                     const data = await response.json();
+                    console.log('AutoRefresh: Received data:', data);
                     this.onUpdate(data);
                     this.lastUpdate = new Date();
                     this.updateCount++;
                     this.updateStatusIndicator('success');
+                    console.log('AutoRefresh: Update completed successfully');
                 } else {
                     throw new Error(`HTTP ${response.status}`);
                 }
@@ -240,7 +270,7 @@ class AutoRefresh {
     
     defaultUpdateHandler(data) {
         // Универсальный обработчик обновления данных
-        console.log('Data updated:', data);
+        console.log('AutoRefresh: defaultUpdateHandler called with data:', data);
         
         // Обновляем счётчики на дашборде
         this.updateDashboardCounters(data);
@@ -254,19 +284,41 @@ class AutoRefresh {
     
     updateDashboardCounters(data) {
         // Обновление счётчиков на карточках дашборда
-        if (data.vpn_active) {
+        console.log('AutoRefresh: Updating dashboard counters with data:', data);
+        
+        if (data.vpn_active !== undefined) {
             const vpnCounter = document.querySelector('[data-counter="vpn-active"]');
+            console.log('AutoRefresh: VPN counter element:', vpnCounter, 'value:', data.vpn_active);
             if (vpnCounter) vpnCounter.textContent = data.vpn_active;
         }
         
-        if (data.rdp_active) {
+        if (data.rdp_active !== undefined) {
             const rdpCounter = document.querySelector('[data-counter="rdp-active"]');
             if (rdpCounter) rdpCounter.textContent = data.rdp_active;
         }
         
-        if (data.smb_files) {
+        if (data.smb_files !== undefined) {
             const smbCounter = document.querySelector('[data-counter="smb-files"]');
             if (smbCounter) smbCounter.textContent = data.smb_files;
+        }
+        
+        // Дополнительные счётчики для других данных
+        if (data.vpn_today !== undefined) {
+            const vpnTodayCounter = document.querySelector('[data-counter="vpn-today"]');
+            if (vpnTodayCounter) vpnTodayCounter.textContent = data.vpn_today;
+        }
+        
+        if (data.mikrotik_devices !== undefined) {
+            const mikrotikCounter = document.querySelector('[data-counter="mikrotik-devices"]');
+            if (mikrotikCounter) mikrotikCounter.textContent = data.mikrotik_devices;
+        }
+        
+        // Обновляем время последнего обновления
+        if (data.last_update) {
+            const lastUpdateElements = document.querySelectorAll('[data-counter="last-update"]');
+            lastUpdateElements.forEach(el => {
+                if (el) el.textContent = data.last_update;
+            });
         }
     }
     
@@ -481,51 +533,216 @@ class AutoRefresh {
 // Глобальная инициализация автообновления
 window.AutoRefresh = AutoRefresh;
 
-// Автоматический запуск для всех страниц мониторинга
+// Упрощённая инициализация автообновления
 document.addEventListener('DOMContentLoaded', function() {
-    // Ждём инициализации настроек
-    setTimeout(() => {
-        let refreshConfig = {
-            interval: 30000, // 30 секунд по умолчанию
-            enabled: true
-        };
-        
-        // Используем сохранённые настройки, если они есть
-        if (window.autoRefreshSettings) {
-            const settings = window.autoRefreshSettings.getSettings();
-            refreshConfig = {
-                interval: window.autoRefreshSettings.getIntervalForCurrentPage(),
-                enabled: settings.enabled,
-                method: settings.method,
-                showNotifications: settings.showNotifications,
-                pauseOnInactive: settings.pauseOnInactive
-            };
-        } else {
-            // Определяем настройки для текущей страницы по умолчанию
-            const path = window.location.pathname;
-            if (path.includes('/rdp/active-sessions') || path.includes('/vpn/') || path === '/') {
-                refreshConfig.interval = 15000; // 15 секунд для активных сессий
-            } else if (path.includes('/history') || path.includes('/stats')) {
-                refreshConfig.interval = 60000; // 1 минута для исторических данных
+    console.log('AutoRefresh: DOM loaded, starting simple initialization...');
+    
+    // Определяем, нужно ли автообновление для текущей страницы
+    const path = window.location.pathname;
+    console.log('AutoRefresh: Current path:', path);
+    
+    let shouldAutoRefresh = false;
+    let interval = 15000; // 15 секунд по умолчанию
+    
+    // Автообновление только для дашборда и активных сессий
+    if (path === '/' || path === '/index' || path === '/dashboard') {
+        shouldAutoRefresh = true;
+        interval = 15000; // 15 секунд для дашборда
+        console.log('AutoRefresh: Dashboard detected, enabling auto-refresh');
+    } else if (path.includes('/rdp/active-sessions') || path.includes('/vpn/active') || path.includes('/smb/active')) {
+        shouldAutoRefresh = true;
+        interval = 15000; // 15 секунд для активных сессий
+        console.log('AutoRefresh: Active sessions page detected, enabling auto-refresh');
+    } else {
+        console.log('AutoRefresh: Static page, auto-refresh disabled');
+    }
+    
+    if (shouldAutoRefresh) {
+        // Простая функция обновления
+        async function updateDashboard() {
+            console.log('AutoRefresh: Updating dashboard...');
+            try {
+                const response = await fetch('/api/status');
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                
+                const data = await response.json();
+                console.log('AutoRefresh: Data received:', data);
+                
+                // Обновляем счётчики на дашборде
+                updateDashboardCounters(data);
+                
+                // Обновляем списки пользователей и файлов
+                await updateDashboardLists();
+                
+                // Обновляем время последнего обновления
+                const timeElement = document.getElementById('server-time');
+                if (timeElement && data.last_update) {
+                    timeElement.textContent = data.last_update;
+                }
+                
+                console.log('AutoRefresh: Update completed successfully');
+            } catch (error) {
+                console.error('AutoRefresh: Update failed:', error);
             }
         }
         
-        // Инициализируем автообновление
-        window.autoRefresh = new AutoRefresh(refreshConfig);
-        
-        // Подписываемся на изменения настроек
-        if (window.autoRefreshSettings) {
-            window.addEventListener('autoRefreshSettingsChanged', () => {
-                const newSettings = window.autoRefreshSettings.getSettings();
-                window.autoRefresh.interval = window.autoRefreshSettings.getIntervalForCurrentPage();
-                window.autoRefresh.method = newSettings.method;
-                
-                if (newSettings.enabled) {
-                    window.autoRefresh.start();
-                } else {
-                    window.autoRefresh.stop();
-                }
-            });
+        // Функция обновления счётчиков дашборда
+        function updateDashboardCounters(data) {
+            // VPN активных
+            const vpnCounter = document.querySelector('[data-counter="vpn-active"]');
+            if (vpnCounter && data.vpn_active !== undefined) {
+                vpnCounter.textContent = data.vpn_active;
+            }
+            
+            // RDP активных
+            const rdpCounter = document.querySelector('[data-counter="rdp-active"]');
+            if (rdpCounter && data.rdp_active !== undefined) {
+                rdpCounter.textContent = data.rdp_active;
+            }
+            
+            // SMB файлов
+            const smbCounter = document.querySelector('[data-counter="smb-files"]');
+            if (smbCounter && data.smb_files !== undefined) {
+                smbCounter.textContent = data.smb_files;
+            }
+            
+            // MikroTik устройств
+            const mikrotikCounter = document.querySelector('[data-counter="mikrotik-devices"]');
+            if (mikrotikCounter && data.mikrotik_devices !== undefined) {
+                mikrotikCounter.textContent = data.mikrotik_devices;
+            }
+            
+            console.log('AutoRefresh: Counters updated');
         }
-    }, 100);
+        
+        // Функция обновления списков пользователей и файлов
+        async function updateDashboardLists() {
+            console.log('AutoRefresh: Updating dashboard lists...');
+            
+            try {
+                // Обновляем VPN пользователей
+                await updateVpnUsersList();
+                
+                // Обновляем RDP пользователей
+                await updateRdpUsersList();
+                
+                // Обновляем SMB файлы
+                await updateSmbFilesList();
+                
+                console.log('AutoRefresh: Lists updated successfully');
+            } catch (error) {
+                console.error('AutoRefresh: Lists update failed:', error);
+            }
+        }
+        
+        // Обновление списка VPN пользователей
+        async function updateVpnUsersList() {
+            try {
+                const response = await fetch('/api/vpn/sessions');
+                if (!response.ok) return;
+                
+                const data = await response.json();
+                const vpnUsersContainer = document.querySelector('.card-body .mt-2.small');
+                
+                if (vpnUsersContainer && data.data && data.data.length > 0) {
+                    // Дедупликация пользователей по имени
+                    const uniqueUsers = [];
+                    const seenUsers = new Set();
+                    
+                    for (const session of data.data) {
+                        if (session.username && !seenUsers.has(session.username)) {
+                            seenUsers.add(session.username);
+                            uniqueUsers.push(session);
+                        }
+                    }
+                    
+                    const userLinks = uniqueUsers.slice(0, 5).map(session => 
+                        `<a href="/vpn/user/${session.username}" class="me-2">${session.username}</a>`
+                    ).join('');
+                    
+                    vpnUsersContainer.innerHTML = `<strong>Сейчас:</strong> ${userLinks}`;
+                }
+            } catch (error) {
+                console.error('AutoRefresh: VPN users update failed:', error);
+            }
+        }
+        
+        // Обновление списка RDP пользователей
+        async function updateRdpUsersList() {
+            try {
+                const response = await fetch('/api/rdp/sessions');
+                if (!response.ok) return;
+                
+                const data = await response.json();
+                const rdpUsersContainers = document.querySelectorAll('.card.border-success .mt-2.small');
+                
+                if (rdpUsersContainers.length > 0 && data.data && data.data.length > 0) {
+                    // Дедупликация пользователей по имени
+                    const uniqueUsers = [];
+                    const seenUsers = new Set();
+                    
+                    for (const session of data.data) {
+                        if (session.username && !seenUsers.has(session.username)) {
+                            seenUsers.add(session.username);
+                            uniqueUsers.push(session);
+                        }
+                    }
+                    
+                    const userLinks = uniqueUsers.slice(0, 5).map(session => 
+                        `<a href="/rdp/user/${session.username}" class="me-2">${session.username}</a>`
+                    ).join('');
+                    
+                    rdpUsersContainers[0].innerHTML = `<strong>Сейчас:</strong> ${userLinks}`;
+                }
+            } catch (error) {
+                console.error('AutoRefresh: RDP users update failed:', error);
+            }
+        }
+        
+        // Обновление списка SMB файлов
+        async function updateSmbFilesList() {
+            try {
+                const response = await fetch('/api/smb/sessions');
+                if (!response.ok) return;
+                
+                const data = await response.json();
+                // Используем уникальный ID для SMB файлов на главной странице
+                const smbFilesContainer = document.getElementById('smb-files-list');
+                
+                if (smbFilesContainer && data.data && data.data.length > 0) {
+                    // Дедупликация файлов по пути
+                    const uniqueFiles = [];
+                    const seenFiles = new Set();
+                    
+                    for (const session of data.data) {
+                        if (session.path && !seenFiles.has(session.path)) {
+                            seenFiles.add(session.path);
+                            uniqueFiles.push(session);
+                        }
+                    }
+                    
+                    // Показываем больше файлов (до 5 вместо 3) и убираем ограничение ширины
+                    const fileLinks = uniqueFiles.slice(0, 5).map(session => {
+                        const fileName = session.path ? session.path.split('\\').pop() : 'Unknown';
+                        // Используем правильный URL для скачивания файла, если есть file_id
+                        const fileUrl = session.file_id ? `/smb/download/${session.file_id}` : `/smb/file/${session.session_id}`;
+                        return `<a href="${fileUrl}" class="me-2" title="${session.path}">${fileName}</a>`;
+                    }).join('');
+                    
+                    smbFilesContainer.innerHTML = `<strong>Сейчас:</strong> ${fileLinks}`;
+                } else {
+                    console.log('AutoRefresh: SMB container not found or no data');
+                }
+            } catch (error) {
+                console.error('AutoRefresh: SMB files update failed:', error);
+            }
+        }
+        
+        // Первое обновление сразу
+        updateDashboard();
+        
+        // Запускаем автообновление
+        setInterval(updateDashboard, interval);
+        console.log(`AutoRefresh: Started with interval ${interval}ms`);
+    }
 });

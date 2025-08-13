@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Тест автообновления</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        .counter { font-size: 24px; font-weight: bold; color: blue; }
+        .log { background: #f5f5f5; padding: 10px; margin: 10px 0; height: 300px; overflow-y: auto; }
+    </style>
+</head>
+<body>
+    <h1>Тест автообновления</h1>
+    
+    <div>
+        <h3>Счётчики:</h3>
+        <p>VPN активных: <span class="counter" data-counter="vpn-active">0</span></p>
+        <p>RDP активных: <span class="counter" data-counter="rdp-active">0</span></p>
+        <p>SMB файлов: <span class="counter" data-counter="smb-files">0</span></p>
+        <p>Последнее обновление: <span data-counter="last-update">-</span></p>
+    </div>
+    
+    <div>
+        <h3>Лог:</h3>
+        <div id="log" class="log"></div>
+    </div>
+    
+    <div>
+        <button onclick="testAPI()">Тест API</button>
+        <button onclick="clearLog()">Очистить лог</button>
+    </div>
+
+    <script>
+        // Перехватываем console.log для отображения в логе
+        const originalLog = console.log;
+        console.log = function(...args) {
+            originalLog.apply(console, args);
+            const logDiv = document.getElementById('log');
+            const time = new Date().toLocaleTimeString();
+            logDiv.innerHTML += `[${time}] ${args.join(' ')}<br>`;
+            logDiv.scrollTop = logDiv.scrollHeight;
+        };
+        
+        function clearLog() {
+            document.getElementById('log').innerHTML = '';
+        }
+        
+        async function testAPI() {
+            try {
+                console.log('Тестируем API /api/status...');
+                const response = await fetch('/api/status');
+                const data = await response.json();
+                console.log('Ответ API:', JSON.stringify(data, null, 2));
+                
+                // Обновляем счётчики
+                if (data.vpn_active !== undefined) {
+                    document.querySelector('[data-counter="vpn-active"]').textContent = data.vpn_active;
+                }
+                if (data.rdp_active !== undefined) {
+                    document.querySelector('[data-counter="rdp-active"]').textContent = data.rdp_active;
+                }
+                if (data.smb_files !== undefined) {
+                    document.querySelector('[data-counter="smb-files"]').textContent = data.smb_files;
+                }
+                if (data.last_update) {
+                    document.querySelector('[data-counter="last-update"]').textContent = data.last_update;
+                }
+                
+                console.log('Счётчики обновлены успешно');
+            } catch (error) {
+                console.log('Ошибка API:', error);
+            }
+        }
+        
+        console.log('Тестовая страница загружена');
+        console.log('Текущий путь:', window.location.pathname);
+        console.log('Проверяем наличие AutoRefresh...');
+        
+        // Проверяем, загружен ли AutoRefresh
+        setTimeout(() => {
+            if (window.AutoRefresh) {
+                console.log('AutoRefresh класс найден');
+                if (window.autoRefresh) {
+                    console.log('Экземпляр autoRefresh найден:', window.autoRefresh);
+                    console.log('Статус:', window.autoRefresh.enabled ? 'включён' : 'выключен');
+                    console.log('Интервал:', window.autoRefresh.interval);
+                } else {
+                    console.log('Экземпляр autoRefresh НЕ найден');
+                }
+            } else {
+                console.log('AutoRefresh класс НЕ найден');
+            }
+        }, 2000);
+    </script>
+    
+    <!-- Подключаем те же скрипты, что и на основном сайте -->
+    <script src="/static/js/auto-refresh.js"></script>
+    <script src="/static/js/auto-refresh-settings.js"></script>
+</body>
+</html>

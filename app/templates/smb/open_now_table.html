@@ -128,11 +128,13 @@
                   <td><span class="badge bg-secondary">{{ s.username }}</span></td>
                   <td>
                     {% if s.file_id %}
-                      <a href="{{ url_for('smb.download_file', file_id=s.file_id) }}" class="text-decoration-none" title="Скачать файл">
-                        {{ s.path }}
+                      <a href="{{ url_for('smb.download_file', file_id=s.file_id) }}" class="text-decoration-none" title="{{ s.path }}">
+                        {{ s.path.split('\\')[-1] if '\\' in s.path else s.path.split('/')[-1] }}
                       </a>
                     {% else %}
-                      {{ s.path }}
+                      <span title="{{ s.path }}">
+                        {{ s.path.split('\\')[-1] if '\\' in s.path else s.path.split('/')[-1] }}
+                      </span>
                     {% endif %}
                   </td>
                   <td>{{ s.host }}</td>
