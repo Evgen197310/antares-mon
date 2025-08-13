@@ -561,49 +561,163 @@ def health():
 
 @bp.route('/status')
 def status():
-    """Общий статус системы мониторинга"""
+    """Общий статус системы мониторинга с данными для автообновления"""
     try:
-        status_data = {}
+        # Получаем данные для всех модулей
+        vpn_data = get_vpn_dashboard_data()
+        rdp_data = get_rdp_dashboard_data()
+        smb_data = get_smb_dashboard_data()
         
-        # VPN статистика
-        try:
-            with db_manager.get_connection('vpn') as conn:
-                with conn.cursor() as cursor:
-                    cursor.execute("SELECT COUNT(*) as active FROM session_history WHERE time_end IS NULL")
-                    status_data['vpn'] = {"active_sessions": cursor.fetchone()['active']}
-        except Exception as e:
-            status_data['vpn'] = {"error": str(e)}
+        # Формируем ответ для автообновления
+        status_data = {
+            'timestamp': datetime.now().isoformat(),
+            'status': 'ok',
+            'vpn_active': vpn_data.get('active_sessions', 0),
+            'rdp_active': rdp_data.get('active_sessions', 0),
+            'smb_files': smb_data.get('open_files', 0),
+            'mikrotik_devices': vpn_data.get('mikrotik_devices', 0),
+            'vpn_today': vpn_data.get('today_sessions', 0),
+            'rdp_with_files': smb_data.get('rdp_users_with_files', 0),
+            'files_modified_today': smb_data.get('files_modified_today', 0),
+            'uptime': get_system_uptime(),
+            'last_update': datetime.now().strftime('%d.%m.%Y %H:%M:%S')
+        }
         
-        # RDP статистика
-        try:
-            with db_manager.get_connection('rdp') as conn:
-                with conn.cursor() as cursor:
-                    cursor.execute("SELECT COUNT(*) as active FROM rdp_active_sessions")
-                    status_data['rdp'] = {"active_sessions": cursor.fetchone()['active']}
-        except Exception as e:
-            status_data['rdp'] = {"error": str(e)}
-        
-        # SMB статистика
-        try:
-            with db_manager.get_connection('smb') as conn:
-                with conn.cursor() as cursor:
-                    cursor.execute("SELECT COUNT(*) as active FROM active_smb_sessions")
-                    cursor.execute("SELECT COUNT(DISTINCT user_id) as users FROM active_smb_sessions")
-                    active_sessions = cursor.fetchone()['active']
-                    cursor.execute("SELECT COUNT(DISTINCT user_id) as users FROM active_smb_sessions")
-                    active_users = cursor.fetchone()['users']
-                    status_data['smb'] = {
-                        "active_sessions": active_sessions,
-                        "active_users": active_users
-                    }
-        except Exception as e:
-            status_data['smb'] = {"error": str(e)}
-        
-        return jsonify({
-            "status": "success",
-            "timestamp": datetime.now().isoformat(),
-            "data": status_data
-        })
+        return jsonify(status_data)
+    
     except Exception as e:
         current_app.logger.error(f"Status API error: {e}")
-        return jsonify({"status": "error", "message": str(e)}), 500
+        return jsonify({
+            'timestamp': datetime.now().isoformat(),
+            'status': 'error',
+            'error': str(e)
+        }), 500
+
+def get_vpn_dashboard_data():
+    """Получить данные VPN для дашборда"""
+    try:
+        from app.utils.vpn_utils import read_active_vpn_sessions
+        
+        # Активные сессии из CSV
+        active_sessions = read_active_vpn_sessions()
+        
+        # Статистика за сегодня из БД
+        conn = db_manager.get_connection('vpn')
+        if conn:
+            cursor = conn.cursor(dictionary=True)
+            
+            # Сессии за сегодня
+            cursor.execute("""
+                SELECT COUNT(*) as today_count
+                FROM session_history 
+                WHERE DATE(login_time) = CURDATE()
+            """)
+            today_result = cursor.fetchone()
+            
+            # Количество устройств MikroTik
+            cursor.execute("""
+                SELECT COUNT(DISTINCT router) as device_count
+                FROM session_history 
+                WHERE router IS NOT NULL AND router != ''
+            """)
+            devices_result = cursor.fetchone()
+            
+            cursor.close()
+            conn.close()
+            
+            return {
+                'active_sessions': len(active_sessions),
+                'today_sessions': today_result['today_count'] if today_result else 0,
+                'mikrotik_devices': devices_result['device_count'] if devices_result else 0
+            }
+    except Exception as e:
+        current_app.logger.error(f"VPN dashboard data error: {e}")
+    
+    return {'active_sessions': 0, 'today_sessions': 0, 'mikrotik_devices': 0}
+
+def get_rdp_dashboard_data():
+    """Получить данные RDP для дашборда"""
+    try:
+        conn = db_manager.get_connection('rdp')
+        if conn:
+            cursor = conn.cursor(dictionary=True)
+            
+            # Активные сессии
+            cursor.execute("""
+                SELECT COUNT(*) as active_count
+                FROM rdp_active_sessions
+            """)
+            active_result = cursor.fetchone()
+            
+            cursor.close()
+            conn.close()
+            
+            return {
+                'active_sessions': active_result['active_count'] if active_result else 0
+            }
+    except Exception as e:
+        current_app.logger.error(f"RDP dashboard data error: {e}")
+    
+    return {'active_sessions': 0}
+
+def get_smb_dashboard_data():
+    """Получить данные SMB для дашборда"""
+    try:
+        conn = db_manager.get_connection('smb')
+        if conn:
+            cursor = conn.cursor(dictionary=True)
+            
+            # Открытые файлы
+            cursor.execute("""
+                SELECT COUNT(*) as open_count
+                FROM active_smb_sessions
+            """)
+            open_result = cursor.fetchone()
+            
+            # Файлы изменённые за день
+            cursor.execute("""
+                SELECT COUNT(*) as modified_count
+                FROM smb_session_history 
+                WHERE DATE(open_time) = CURDATE()
+            """)
+            modified_result = cursor.fetchone()
+            
+            # Пользователи с RDP и открытыми файлами
+            cursor.execute("""
+                SELECT COUNT(DISTINCT s.user_id) as rdp_users_count
+                FROM active_smb_sessions s
+                INNER JOIN rdp_active_sessions r ON s.user_id = r.user_id
+            """)
+            rdp_users_result = cursor.fetchone()
+            
+            cursor.close()
+            conn.close()
+            
+            return {
+                'open_files': open_result['open_count'] if open_result else 0,
+                'files_modified_today': modified_result['modified_count'] if modified_result else 0,
+                'rdp_users_with_files': rdp_users_result['rdp_users_count'] if rdp_users_result else 0
+            }
+    except Exception as e:
+        current_app.logger.error(f"SMB dashboard data error: {e}")
+    
+    return {'open_files': 0, 'files_modified_today': 0, 'rdp_users_with_files': 0}
+
+def get_system_uptime():
+    """Получить uptime системы"""
+    try:
+        with open('/proc/uptime', 'r') as f:
+            uptime_seconds = float(f.readline().split()[0])
+        
+        days = int(uptime_seconds // 86400)
+        hours = int((uptime_seconds % 86400) // 3600)
+        minutes = int((uptime_seconds % 3600) // 60)
+        
+        if days > 0:
+            return f"{days}д {hours}ч {minutes}м"
+        elif hours > 0:
+            return f"{hours}ч {minutes}м"
+        else:
+            return f"{minutes}м"
+    except:
+        return "неизвестно"

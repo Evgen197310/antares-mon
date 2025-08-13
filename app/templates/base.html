@@ -117,7 +117,7 @@
             <div class="row">
                 <div class="col-md-4">
                     <small class="text-muted">
-                        © 2025 Система мониторинга сетевой инфраструктуры
+                        2025 Система мониторинга сетевой инфраструктуры
                     </small>
                 </div>
                 <div class="col-md-4 text-center">
@@ -136,7 +136,11 @@
 
     <!-- Bootstrap JS -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
-    <!-- Custom JS -->
+    <!-- Подключаем модуль автообновления -->
+    <script src="{{ url_for('static', filename='js/auto-refresh.js') }}"></script>
+    <!-- Подключаем настройки автообновления -->
+    <script src="{{ url_for('static', filename='js/auto-refresh-settings.js') }}"></script>
+    <!-- Основной JS файл -->
     <script src="{{ url_for('static', filename='js/main.js') }}"></script>
     
     {% block scripts %}{% endblock %}
