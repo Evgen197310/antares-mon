@@ -268,8 +268,9 @@ def index():
         # Нормализованные значения для SQL-фильтров
         search_user_norm = normalize_username_for_comparison(search_user) if search_user else ''
         search_file_norm = normalize_path_for_search(search_file) if search_file else ''
-        filter_modified = request.args.get('filter_modified') == '1'
-        filter_rdp_session = request.args.get('filter_rdp_session') == '1'
+        # Фильтры по умолчанию включены, если не передано явно '0'
+        filter_modified = request.args.get('filter_modified', '1') != '0'
+        filter_rdp_session = request.args.get('filter_rdp_session', '1') != '0'
         # Параметры пагинации
         page = request.args.get('page', type=int) or 1
         per_page = request.args.get('per_page', type=int) or 10
@@ -343,11 +344,8 @@ def index():
                 if filter_rdp_session:
                     where_clauses.append("h.open_in_rdp = 1")
                 
-                # Если нет никаких фильтров, показываем последние файлы (ограничиваем по времени)
-                if not where_clauses:
-                    where_clauses.append("h.open_time >= DATE_SUB(NOW(), INTERVAL 24 HOUR)")
-                
-                where_sql = " WHERE " + " AND ".join(where_clauses)
+                # Формируем WHERE-клаузу
+                where_sql = (" WHERE " + " AND ".join(where_clauses)) if where_clauses else ""
                 base_from = "FROM smb_session_history h JOIN smb_files f ON h.file_id = f.id JOIN smb_users u ON h.user_id = u.id"
                 
                 # Подсчёт общего количества результатов
