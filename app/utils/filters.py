@@ -1,4 +1,6 @@
 from datetime import datetime, timedelta
+import re
+from markupsafe import Markup, escape
 
 def pretty_time(seconds):
     """Форматирование времени в человекочитаемый вид"""
@@ -74,6 +76,31 @@ def register_filters(app):
     app.jinja_env.filters['datetime_format'] = datetime_format
     app.jinja_env.filters['time_ago'] = time_ago
     app.jinja_env.filters['duration_format'] = duration_format
+    app.jinja_env.filters['highlight'] = highlight
+
+def highlight(text, query):
+    """Подсветка совпадений в тексте тегом <mark>. Регистронезависимо, безопасно.
+
+    Args:
+        text: исходная строка
+        query: поисковая подстрока (может быть пустой)
+    Returns:
+        Markup: безопасная строка с <mark> вокруг совпадений
+    """
+    if text is None:
+        return ''
+    if not query:
+        return escape(text)
+    try:
+        pattern = re.escape(str(query))
+        def _repl(m):
+            return Markup(f"<mark>{escape(m.group(0))}</mark>")
+        # Экранируем исходный текст, а затем делаем замену по оригинальным совпадениям
+        # Чтобы корректно совместить, заменим на временный маркер, затем обернём.
+        # Но проще: применим на неэкранированном тексте и экранируем части.
+        return Markup(re.sub(pattern, lambda m: _repl(m), escape(str(text)), flags=re.IGNORECASE))
+    except Exception:
+        return escape(text)
 
 def datetime_format(value, fmt='%Y-%m-%d %H:%M:%S'):
     """Форматирует datetime/строку в заданный формат."""

@@ -6,6 +6,7 @@ import os
 import tempfile
 import paramiko
 from urllib.parse import quote
+import math
 import traceback
 
 bp = Blueprint('smb', __name__)
@@ -13,6 +14,8 @@ bp = Blueprint('smb', __name__)
 @bp.route('/debug-ping')
 def debug_ping():
     return 'smb-ok'
+
+
 
 @bp.route('/debug-all-smb')
 def debug_all_smb():
@@ -174,6 +177,12 @@ def normalize_username(username):
         return username
     return username.lower().replace('\\', '_').replace('/', '_')
 
+def normalize_path_for_search(term: str) -> str:
+    """Нормализация поискового термина пути под колонку norm_path (lower + '/')."""
+    if not term:
+        return ''
+    return term.replace('\\', '/').lower()
+
 def _beautify_filename(fname: str) -> str:
     """Только первая буква заглавная, остальное маленькими, расширение нижним регистром."""
     if not fname:
@@ -256,8 +265,21 @@ def index():
     try:
         search_user = request.args.get('search_user', '').strip()
         search_file = request.args.get('search_file', '').strip()
+        # Нормализованные значения для SQL-фильтров
+        search_user_norm = normalize_username_for_comparison(search_user) if search_user else ''
+        search_file_norm = normalize_path_for_search(search_file) if search_file else ''
         filter_modified = request.args.get('filter_modified') == '1'
         filter_rdp_session = request.args.get('filter_rdp_session') == '1'
+        # Параметры пагинации
+        page = request.args.get('page', type=int) or 1
+        per_page = request.args.get('per_page', type=int) or 10
+        if page < 1:
+            page = 1
+        # Ограничим per_page разумными рамками
+        per_page = max(5, min(per_page, 100))
+        # Всегда используем поиск по истории (а не только активные сессии)
+        # Это позволяет находить файлы по поисковым терминам даже без дополнительных фильтров
+        search_mode = True
         
         with db_manager.get_connection('smb') as conn:
             with conn.cursor() as cursor:
@@ -271,9 +293,9 @@ def index():
                 params = []
                 where_conditions = []
                 
-                if search_user:
-                    where_conditions.append("u.username LIKE %s")
-                    params.append(f"%{search_user}%")
+                if search_user_norm:
+                    where_conditions.append("LOWER(u.username) LIKE %s")
+                    params.append(f"%{search_user_norm}%")
                 
                 if where_conditions:
                     users_query += " WHERE " + " AND ".join(where_conditions)
@@ -282,15 +304,144 @@ def index():
                 cursor.execute(users_query, params)
                 users = cursor.fetchall()
                 
-                # Получаем базовые данные о файлах (без фильтров RDP)
+                # Проверяем, есть ли в БД колонка нормализованного пути
+                has_norm_path = False
+                try:
+                    cursor.execute("SHOW COLUMNS FROM smb_files LIKE 'norm_path'")
+                    has_norm_path = cursor.fetchone() is not None
+                except Exception:
+                    has_norm_path = False
+
+                # Поиск по всей истории smb_session_history с использованием встроенных полей БД
+                files = []
+                
+                # Нормализатор имени пользователя на стороне SQL (убираем домен и нижний регистр)
+                u_norm = "LOWER(CASE WHEN INSTR(u.username, '\\\\') > 0 THEN SUBSTRING_INDEX(u.username, '\\\\', -1) ELSE u.username END)"
+                
+                # Строим условия поиска (логика И для всех фильтров)
+                where_clauses = []
+                params = []
+                
+                # Поиск по пути файла (если введен)
+                if search_file_norm:
+                    if has_norm_path:
+                        where_clauses.append("f.norm_path LIKE %s")
+                    else:
+                        where_clauses.append("LOWER(REPLACE(f.path, CHAR(92), '/')) LIKE %s")
+                    params.append(f"%{search_file_norm}%")
+                
+                # Поиск по пользователю (если введен)
+                if search_user_norm:
+                    where_clauses.append(f"{u_norm} LIKE %s")
+                    params.append(f"%{search_user_norm}%")
+                
+                # Фильтр "Изменён" (если включен)
+                if filter_modified:
+                    where_clauses.append("(h.final_size != h.initial_size OR h.final_size IS NULL)")
+                
+                # Фильтр "Внутри RDP" (если включен)
+                if filter_rdp_session:
+                    where_clauses.append("h.open_in_rdp = 1")
+                
+                # Если нет никаких фильтров, показываем последние файлы (ограничиваем по времени)
+                if not where_clauses:
+                    where_clauses.append("h.open_time >= DATE_SUB(NOW(), INTERVAL 24 HOUR)")
+                
+                where_sql = " WHERE " + " AND ".join(where_clauses)
+                base_from = "FROM smb_session_history h JOIN smb_files f ON h.file_id = f.id JOIN smb_users u ON h.user_id = u.id"
+                
+                # Подсчёт общего количества результатов
+                count_sql = f"SELECT COUNT(*) AS total {base_from} {where_sql}"
+                cursor.execute(count_sql, params)
+                total_files = cursor.fetchone()['total']
+                
+                # Получение результатов текущей страницы
+                select_sql = f"""
+                    SELECT 
+                        f.id AS file_id,
+                        f.path,
+                        u.id AS user_id,
+                        u.username,
+                        h.open_time,
+                        h.initial_size,
+                        h.open_in_rdp,
+                        CASE WHEN (h.final_size != h.initial_size OR h.final_size IS NULL) THEN 1 ELSE 0 END AS is_modified
+                    {base_from}
+                    {where_sql}
+                    ORDER BY h.open_time DESC
+                    LIMIT %s OFFSET %s
+                """
+                
+                page_params = list(params) + [per_page, (page - 1) * per_page]
+                cursor.execute(select_sql, page_params)
+                rows = cursor.fetchall()
+                
+                # Обрабатываем результаты
+                for r in rows:
+                    item = dict(r)
+                    item['id'] = r['file_id']
+                    item['filename'] = os.path.basename(r['path']) if r.get('path') else None
+                    item['file_size'] = r.get('initial_size')
+                    item['is_modified'] = bool(r.get('is_modified', 0))
+                    item['in_rdp_session'] = bool(r.get('open_in_rdp', 0))  # Используем встроенное поле
+                    files.append(item)
+
+                # Статистика (выносим ИЗ цикла!)
+                cursor.execute("SELECT COUNT(*) as total FROM active_smb_sessions")
+                active_sessions = cursor.fetchone()['total']
+                cursor.execute("SELECT COUNT(DISTINCT user_id) as total FROM active_smb_sessions")
+                active_users = cursor.fetchone()['total']
+                cursor.execute("SELECT COUNT(DISTINCT file_id) as total FROM active_smb_sessions")
+                open_files = cursor.fetchone()['total']
+                cursor.execute("""
+                    SELECT COUNT(DISTINCT file_id) as total 
+                    FROM smb_session_history 
+                    WHERE open_time >= DATE_SUB(NOW(), INTERVAL 24 HOUR)
+                      AND final_size != initial_size
+                """)
+                modified_files_today = cursor.fetchone()['total']
+
+                # Пользователи с активными RDP
+                users_with_rdp = 0
+                try:
+                    with db_manager.get_connection('rdp') as rdp_conn:
+                        with rdp_conn.cursor() as rdp_cursor:
+                            rdp_cursor.execute("SELECT COUNT(DISTINCT username) as total FROM rdp_active_sessions")
+                            users_with_rdp = rdp_cursor.fetchone()['total']
+                except Exception as e:
+                    current_app.logger.warning(f"Could not fetch RDP users count: {e}")
+                    users_with_rdp = 0
+
+                return render_template('smb/index.html',
+                                     users=users,
+                                     files=files,
+                                     search_user=search_user,
+                                     search_file=search_file,
+                                     filter_modified=filter_modified,
+                                     filter_rdp_session=filter_rdp_session,
+                                     pagination={
+                                         'page': page,
+                                         'per_page': per_page,
+                                         'total': total_files,
+                                         'pages': (math.ceil(total_files / per_page) if per_page else 1)
+                                     },
+                                     stats={
+                                              'active_sessions': active_sessions,
+                                              'active_users': active_users,
+                                              'open_files': open_files,
+                                              'modified_files_today': modified_files_today,
+                                              'users_with_rdp': users_with_rdp
+                                          })
                 recent_query = """
                     SELECT DISTINCT f.id as file_id, f.path, u.id as user_id, u.username,
                            s.open_time, s.initial_size, s.last_seen,
                            CASE 
                                WHEN EXISTS (
                                    SELECT 1 FROM smb_session_history h 
-                                   WHERE h.file_id = f.id AND h.user_id = u.id 
-                                   AND h.final_size != h.initial_size
+                                   WHERE h.file_id = f.id 
+                                     AND h.user_id = u.id 
+                                     AND h.open_time BETWEEN s.open_time AND s.last_seen
+                                     AND (h.final_size != h.initial_size OR h.final_size IS NULL)
                                ) THEN 1
                                ELSE 0
                            END as is_modified
@@ -301,38 +452,54 @@ def index():
                 recent_params = []
                 where_conditions = []
                 
-                if search_file:
-                    where_conditions.append("f.path LIKE %s")
-                    recent_params.append(f"%{search_file}%")
+                if search_file_norm:
+                    if has_norm_path:
+                        where_conditions.append("f.norm_path LIKE %s")
+                    else:
+                        where_conditions.append("LOWER(REPLACE(f.path, CHAR(92), '/')) LIKE %s")
+                    recent_params.append(f"%{search_file_norm}%")
+
+                if search_user_norm:
+                    where_conditions.append("LOWER(u.username) LIKE %s")
+                    recent_params.append(f"%{search_user_norm}%")
                 
                 if where_conditions:
                     recent_query += " WHERE " + " AND ".join(where_conditions)
                 
-                recent_query += " ORDER BY s.last_seen DESC LIMIT 50"  # Увеличиваем лимит для фильтрации
+                recent_query += " ORDER BY s.last_seen DESC LIMIT 500"  # Увеличиваем лимит для фильтрации
                 cursor.execute(recent_query, recent_params)
                 recent = cursor.fetchall()
                 
-                # Получаем данные RDP сессий для сопоставления
+                # Получаем данные RDP сессий для сопоставления (ограничиваем круг пользователей)
                 rdp_sessions = []
+                candidate_users = sorted({normalize_username_for_comparison(r['username']) for r in recent if r.get('username')})
+                if search_user_norm:
+                    candidate_users = sorted(set(candidate_users) | {search_user_norm})
                 try:
-                    with db_manager.get_connection('rdp') as rdp_conn:
-                        with rdp_conn.cursor() as rdp_cursor:
-                            # Получаем активные RDP сессии
-                            rdp_cursor.execute("""
-                                SELECT username, login_time 
-                                FROM rdp_active_sessions
-                            """)
-                            active_rdp = rdp_cursor.fetchall()
-                            
-                            # Получаем историю RDP сессий за последние 7 дней
-                            rdp_cursor.execute("""
-                                SELECT username, login_time 
-                                FROM rdp_session_history 
-                                WHERE login_time >= DATE_SUB(NOW(), INTERVAL 7 DAY)
-                            """)
-                            history_rdp = rdp_cursor.fetchall()
-                            
-                            rdp_sessions = list(active_rdp) + list(history_rdp)
+                    if candidate_users:
+                        like_terms = [f"%{u}%" for u in candidate_users]
+                        with db_manager.get_connection('rdp') as rdp_conn:
+                            with rdp_conn.cursor() as rdp_cursor:
+                                active_where = " OR ".join(["LOWER(username) LIKE %s"] * len(like_terms))
+                                rdp_cursor.execute(f"""
+                                    SELECT username, login_time 
+                                    FROM rdp_active_sessions
+                                    WHERE {active_where}
+                                """, like_terms)
+                                active_rdp = rdp_cursor.fetchall()
+
+                                hist_where = " OR ".join(["LOWER(username) LIKE %s"] * len(like_terms))
+                                rdp_cursor.execute(f"""
+                                    SELECT username, login_time 
+                                    FROM rdp_session_history 
+                                    WHERE ({hist_where})
+                                      AND login_time >= DATE_SUB(NOW(), INTERVAL 7 DAY)
+                                """, like_terms)
+                                history_rdp = rdp_cursor.fetchall()
+
+                                rdp_sessions = list(active_rdp) + list(history_rdp)
+                    else:
+                        rdp_sessions = []
                 except Exception as e:
                     current_app.logger.warning(f"Could not fetch RDP sessions: {e}")
                     rdp_sessions = []
@@ -361,9 +528,7 @@ def index():
                                     item['in_rdp_session'] = True
                                     break
                     
-                    # Если файл открыт внутри RDP, то автоматически считается изменённым
-                    if item['in_rdp_session']:
-                        item['is_modified'] = True
+                    # Не считаем файл изменённым автоматически из-за RDP
                     
                     # Применяем фильтры
                     if filter_modified and not item['is_modified']:
@@ -373,8 +538,11 @@ def index():
                     
                     files.append(item)
                 
-                # Ограничиваем количество результатов
-                files = files[:10]
+                # Пагинация результатов
+                total_files = len(files)
+                start = (page - 1) * per_page
+                end = start + per_page
+                files = files[start:end]
                 
                 # Статистика
                 cursor.execute("SELECT COUNT(*) as total FROM active_smb_sessions")
@@ -413,6 +581,12 @@ def index():
                                      search_file=search_file,
                                      filter_modified=filter_modified,
                                      filter_rdp_session=filter_rdp_session,
+                                     pagination={
+                                         'page': page,
+                                         'per_page': per_page,
+                                         'total': total_files,
+                                         'pages': (math.ceil(total_files / per_page) if per_page else 1)
+                                     },
                                      stats={
                                           'active_sessions': active_sessions,
                                           'active_users': active_users,
@@ -444,7 +618,8 @@ def files_open_now():
                                WHEN EXISTS (
                                    SELECT 1 FROM smb_session_history h 
                                    WHERE h.file_id = f.id AND h.user_id = u.id 
-                                   AND h.final_size != h.initial_size
+                                   AND h.open_time BETWEEN s.open_time AND s.last_seen
+                                   AND (h.final_size != h.initial_size OR h.final_size IS NULL)
                                ) THEN 1
                                ELSE 0
                            END as is_modified
@@ -503,9 +678,7 @@ def files_open_now():
                                     session_dict['in_rdp_session'] = True
                                     break
                     
-                    # Если файл открыт внутри RDP, то автоматически считается изменённым
-                    if session_dict['in_rdp_session']:
-                        session_dict['is_modified'] = True
+                    # Не считаем файл изменённым автоматически из-за RDP
                     
                     # Применяем фильтры
                     if filter_modified and not session_dict['is_modified']:

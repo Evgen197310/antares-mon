@@ -132,6 +132,14 @@
                                    value="{{ search_file or '' }}" placeholder="Поиск по файлу">
                         </div>
                         <div class="col-md-2">
+                            <label for="per_page" class="form-label">На странице</label>
+                            <select class="form-select" id="per_page" name="per_page">
+                                {% for opt in [10, 20, 50, 100] %}
+                                    <option value="{{ opt }}" {% if pagination and pagination.per_page == opt %}selected{% endif %}>{{ opt }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-2">
                             <div class="form-check mt-4">
                                 <input class="form-check-input" type="checkbox" id="filter_modified" 
                                        name="filter_modified" value="1" {{ 'checked' if filter_modified }}>
@@ -153,6 +161,7 @@
                             <button type="submit" class="btn btn-primary mt-4">
                                 <i class="fas fa-search"></i> Применить
                             </button>
+                            <input type="hidden" name="page" value="1">
                         </div>
                     </form>
                 </div>
@@ -192,21 +201,21 @@
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {% for file in files[:10] %}
+                                    {% for file in files %}
                                     <tr>
                                         <td>
                                             <i class="fas fa-file"></i>
                                             {% if file.id %}
                                             <a href="{{ url_for('smb.download_file', file_id=file.id) }}" class="text-decoration-none" title="{{ file.path or file.filename or 'N/A' }}">
-                                                <strong>{{ file.filename or 'N/A' }}</strong>
+                                                <strong>{{ (file.filename or 'N/A')|highlight(search_file) }}</strong>
                                             </a>
                                             {% else %}
-                                            <strong title="{{ file.path or file.filename or 'N/A' }}">{{ file.filename or 'N/A' }}</strong>
+                                            <strong title="{{ file.path or file.filename or 'N/A' }}">{{ (file.filename or 'N/A')|highlight(search_file) }}</strong>
                                             {% endif %}
                                         </td>
                                         <td>
                                             <a href="{{ url_for('smb.user_detail', user_id=file.user_id) if file.user_id else '#' }}">
-                                                {{ file.username or 'Unknown' }}
+                                                {{ (file.username or 'Unknown')|highlight(search_user) }}
                                             </a>
                                         </td>
                                         <td>
@@ -242,6 +251,127 @@
                                 </tbody>
                             </table>
                         </div>
+                        {% if pagination and pagination.pages > 1 %}
+                        <nav aria-label="Постраничная навигация">
+                            <div class="d-flex justify-content-between align-items-center mb-3">
+                                <!-- Основная пагинация -->
+                                <ul class="pagination mb-0">
+                                    <!-- Первая страница -->
+                                    <li class="page-item {% if pagination.page <= 1 %}disabled{% endif %}">
+                                        <a class="page-link" href="{{ url_for('smb.index', search_user=search_user, search_file=search_file, filter_modified=('1' if filter_modified else None), filter_rdp_session=('1' if filter_rdp_session else None), per_page=pagination.per_page, page=1) }}">
+                                            <i class="fas fa-angle-double-left"></i>
+                                        </a>
+                                    </li>
+                                    
+                                    <!-- Предыдущая -->
+                                    <li class="page-item {% if pagination.page <= 1 %}disabled{% endif %}">
+                                        <a class="page-link" href="{{ url_for('smb.index', search_user=search_user, search_file=search_file, filter_modified=('1' if filter_modified else None), filter_rdp_session=('1' if filter_rdp_session else None), per_page=pagination.per_page, page=pagination.page-1) }}">
+                                            <i class="fas fa-angle-left"></i>
+                                        </a>
+                                    </li>
+                                    
+                                    <!-- Компактная линейка страниц -->
+                                    {% set start_page = [1, pagination.page - 2]|max %}
+                                    {% set end_page = [pagination.pages, pagination.page + 2]|min %}
+                                    
+                                    {% if start_page > 1 %}
+                                        <li class="page-item">
+                                            <a class="page-link" href="{{ url_for('smb.index', search_user=search_user, search_file=search_file, filter_modified=('1' if filter_modified else None), filter_rdp_session=('1' if filter_rdp_session else None), per_page=pagination.per_page, page=1) }}">1</a>
+                                        </li>
+                                        {% if start_page > 2 %}
+                                            <li class="page-item disabled">
+                                                <span class="page-link">...</span>
+                                            </li>
+                                        {% endif %}
+                                    {% endif %}
+                                    
+                                    {% for p in range(start_page, end_page + 1) %}
+                                        <li class="page-item {% if p == pagination.page %}active{% endif %}">
+                                            <a class="page-link" href="{{ url_for('smb.index', search_user=search_user, search_file=search_file, filter_modified=('1' if filter_modified else None), filter_rdp_session=('1' if filter_rdp_session else None), per_page=pagination.per_page, page=p) }}">{{ p }}</a>
+                                        </li>
+                                    {% endfor %}
+                                    
+                                    {% if end_page < pagination.pages %}
+                                        {% if end_page < pagination.pages - 1 %}
+                                            <li class="page-item disabled">
+                                                <span class="page-link">...</span>
+                                            </li>
+                                        {% endif %}
+                                        <li class="page-item">
+                                            <a class="page-link" href="{{ url_for('smb.index', search_user=search_user, search_file=search_file, filter_modified=('1' if filter_modified else None), filter_rdp_session=('1' if filter_rdp_session else None), per_page=pagination.per_page, page=pagination.pages) }}">{{ pagination.pages }}</a>
+                                        </li>
+                                    {% endif %}
+                                    
+                                    <!-- Следующая -->
+                                    <li class="page-item {% if pagination.page >= pagination.pages %}disabled{% endif %}">
+                                        <a class="page-link" href="{{ url_for('smb.index', search_user=search_user, search_file=search_file, filter_modified=('1' if filter_modified else None), filter_rdp_session=('1' if filter_rdp_session else None), per_page=pagination.per_page, page=pagination.page+1) }}">
+                                            <i class="fas fa-angle-right"></i>
+                                        </a>
+                                    </li>
+                                    
+                                    <!-- Последняя страница -->
+                                    <li class="page-item {% if pagination.page >= pagination.pages %}disabled{% endif %}">
+                                        <a class="page-link" href="{{ url_for('smb.index', search_user=search_user, search_file=search_file, filter_modified=('1' if filter_modified else None), filter_rdp_session=('1' if filter_rdp_session else None), per_page=pagination.per_page, page=pagination.pages) }}">
+                                            <i class="fas fa-angle-double-right"></i>
+                                        </a>
+                                    </li>
+                                </ul>
+                                
+                                <!-- Переход на конкретную страницу -->
+                                <div class="d-flex align-items-center">
+                                    <small class="text-muted me-2">
+                                        Страница {{ pagination.page }} из {{ pagination.pages }} 
+                                        ({{ pagination.total }} результатов)
+                                    </small>
+                                    <div class="input-group" style="width: 120px;">
+                                        <input type="number" class="form-control form-control-sm" 
+                                               id="jumpToPage" min="1" max="{{ pagination.pages }}" 
+                                               value="{{ pagination.page }}" placeholder="№">
+                                        <button class="btn btn-outline-secondary btn-sm" type="button" 
+                                                id="jumpToPageBtn">
+                                            <i class="fas fa-arrow-right"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </nav>
+                        
+                        <script>
+                        document.addEventListener('DOMContentLoaded', function() {
+                            const maxPages = {{ pagination.pages|tojson }};
+                            
+                            function jumpToPage() {
+                                const pageInput = document.getElementById('jumpToPage');
+                                const pageNum = parseInt(pageInput.value);
+                                
+                                if (pageNum >= 1 && pageNum <= maxPages) {
+                                    const currentUrl = new URL(window.location);
+                                    currentUrl.searchParams.set('page', pageNum);
+                                    window.location.href = currentUrl.toString();
+                                } else {
+                                    alert('Введите номер страницы от 1 до ' + maxPages);
+                                    pageInput.focus();
+                                }
+                            }
+                            
+                            // Переход по Enter
+                            const jumpInput = document.getElementById('jumpToPage');
+                            if (jumpInput) {
+                                jumpInput.addEventListener('keypress', function(e) {
+                                    if (e.key === 'Enter') {
+                                        jumpToPage();
+                                    }
+                                });
+                            }
+                            
+                            // Добавляем обработчик для кнопки
+                            const jumpButton = document.getElementById('jumpToPageBtn');
+                            if (jumpButton) {
+                                jumpButton.addEventListener('click', jumpToPage);
+                            }
+                        });
+                        </script>
+                        {% endif %}
                         <div class="text-center mt-3">
                             <a href="{{ url_for('smb.files_open_now') }}" class="btn btn-primary">
                                 Показать все открытые файлы
